@@ -20,3 +20,11 @@ message TaskItem{
 message TaskList{
     repeated TaskItem list = 1; 
 }
+
+message ParamItem{
+    required string key = 1;
+    required int32 value = 2;
+}
+message SystemParams{
+    repeated ParamItem list = 1;
+}

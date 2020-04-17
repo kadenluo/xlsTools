@@ -38,10 +38,10 @@ class Converter:
             content = []
             for key in sorted(data.keys(), func):
                 value = data[key]
-                if isinstance(key, str):
-                    content.append(u"%s=%s" % (key, self._objectToStringWithIndent(value, level+1, func)))
+                if isinstance(key, str) or isinstance(key, unicode):
+                    content.append(u"%s = %s" % (key.strip('"'), self._objectToStringWithIndent(value, level+1, func)))
                 else:
-                    content.append(u"[%s]=%s" % (key, self._objectToStringWithIndent(value, level+1, func)))
+                    content.append(u"[%s] = %s" % (key, self._objectToStringWithIndent(value, level+1, func)))
             content = self._indent*(level+1) + (u",\n"+self._indent*(level+1)).join(content)
             result = u"{\n%s\n%s}" % (content, self._indent*level)
         else:
@@ -75,12 +75,17 @@ class Converter:
             else:
                 key = row[mainkey]
                 del row[mainkey]
-                if isinstance(key, str):
-                    rows.append(u"%s%s=%s" % (self._indent, key, tostring(row, func=field_sort_func)))
+                left_split = u"["
+                right_split = u"]"
+                if isinstance(key, str) or isinstance(key, unicode):
+                    left_split = u""
+                    right_split = u""
+                    key = key.strip(u'"')
+                if len(row.items()) == 1:
+                    rows.append(u"%s%s%s%s = %s" % (self._indent, left_split, key,  right_split, tostring(row.items()[0][1], func=field_sort_func)))
                 else:
-                    rows.append(u"%s[%s]=%s" % (self._indent, key, tostring(row, func=field_sort_func)))
+                    rows.append(u"%s%s%s%s = %s" % (self._indent, left_split, key, right_split, tostring(row, func=field_sort_func)))
         code = u"{\n%s\n}" % (u",\n".join(rows))
-        print(code)
         return code
 
     def save(self, filename, data):
@@ -121,13 +126,11 @@ class Converter:
                 mainkey = value
             field2index[value] = col
 
-        print(field2index)
         result = []
         for i in xrange(2, nrows):
             item = self._convertRow(desc, field2index, sheet, i, "")
             result.append(item)
-        print(result)
-        
+
         def field_sort_func(x, y):
             if x in field2index and y in field2index:
                 return field2index[x] - field2index[y]
@@ -139,6 +142,7 @@ class Converter:
                 return x < y
         code = self.getCode(result, mainkey, field_sort_func)
         code = u"_G.tables = _G.tables or {}\n_G.tables.%s = %s" % (classname, code)
+        print(code)
 
         # save
         self.save(classname + '.lua', code)
