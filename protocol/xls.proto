@@ -1,0 +1,22 @@
+syntax = "proto2";
+
+
+message AwardItem{
+    required int32 id = 1;
+    required int32 num = 2;
+    optional int32 expire = 3;
+}
+
+message TaskItem{
+    required int32 id = 1;
+    required int32 type = 2;
+    required string name = 3;
+    required uint32 start_time = 4;
+    required uint32 end_time = 5;
+    repeated int32  conds = 6;
+    repeated AwardItem awards = 7;
+}
+
+message TaskList{
+    repeated TaskItem list = 1; 
+}
