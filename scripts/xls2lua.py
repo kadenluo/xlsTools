@@ -9,11 +9,11 @@ import datetime
 import xlrd
 import json
 import argparse
+from operator import itemgetter
 
 sys.path.append("..")
 
 from google.protobuf.descriptor import FieldDescriptor
-from protocol import xls_pb2
 
 datemode = 0 # 时间戳模式 0: 1900-based, 1: 1904-based
 
@@ -108,11 +108,6 @@ class Converter:
         if filename not in self._xls2class:
             raise Exception(u"Failed to load config of this file. %s" % filename)
         classname = self._xls2class[filename]
-        if classname not in xls_pb2.DESCRIPTOR.message_types_by_name:
-            raise Exception(u"Failed to find the class name. %s" % classname)
-        desc = xls_pb2.DESCRIPTOR.message_types_by_name[classname]
-        assert (desc.fields[0].cpp_type == FieldDescriptor.CPPTYPE_MESSAGE)
-        desc = desc.fields_by_name['list'].message_type
 
         filepath = u"%s/%s" % (self._config.input_dir, filename)
         worksheet = xlrd.open_workbook(filepath)
@@ -120,31 +115,46 @@ class Converter:
         nrows = sheet.nrows
         ncols = sheet.ncols
         assert ((nrows > 2) and (ncols > 1))
-        field2index = {}
+
         mainkey = None
+        field2index = {}
         for col in range(ncols):
-            value = sheet.cell(1, col).value
-            if value.endswith('*'):
-                value = value.strip('*')
+            desc = self._getCellString(sheet.cell(0, col)).strip(' ')
+            name = self._getCellString(sheet.cell(1, col)).strip(' ')
+            vtype =self._getCellString(sheet.cell(2, col)).strip(' ')
+
+            if len(name) == 0:
+                continue
+
+            if name.startswith('*'):
+                name = name.strip('*')
                 assert(mainkey == None)
-                mainkey = value
-            field2index[value] = col
+                mainkey = name
+            field2index[col] = {"desc":desc, "name":name, "type":vtype, "levels":name.split('#')}
+        #print(json.dumps(field2index, indent=4))
 
-        if mainkey is None:
-            result = []
-        else:
-            result = {}
+        result = []
+        for row in range(3, nrows):
+            item = {"_meta":{"isdict":True}}
+            fields = {}
+            for col in range(ncols):
+                if col not in field2index:
+                    continue
+                meta = field2index[col]
+                value = self._getCellValue(sheet.cell(row, col), meta["type"]) 
+                key = meta["name"]
+                if len(meta["levels"]) == 1:
+                    item[key] = value
+                else:
+                    fields[key] = value
+            self._convertRow(item, fields)
+            #print(json.dumps(item, indent=4))
+            item = self._fixLevelType(item)
+            #print(json.dumps(item, indent=4))
+            result.append(item)
 
-        for i in range(2, nrows):
-            item = self._convertRow(desc, field2index, sheet, i, "")
-            if isinstance(result, list):
-                result.append(item)
-            else:
-                result[item[mainkey]] = item
-                del item[mainkey]
-
-        print(result)
-        #print(json.dumps(result, indent=4))
+        #print(result)
+        print(json.dumps(result, indent=4))
 
         #def field_sort_func(x, y):
         #    if x in field2index and y in field2index:
@@ -156,68 +166,77 @@ class Converter:
         #    else:
         #        return x < y
 
-        def field_sort_func(x):
-            if x in field2index:
-                return field2index[x]
-            else:
-                return 0
-        code = self.getCode(result, mainkey, field_sort_func)
-        code = u"_G.tables = _G.tables or {}\n_G.tables.%s = %s" % (classname, code)
-        print(code)
+        #def field_sort_func(x):
+        #    if x in field2index:
+        #        return field2index[x]
+        #    else:
+        #        return 0
+        #code = self.getCode(result, mainkey, field_sort_func)
+        #code = u"_G.tables = _G.tables or {}\n_G.tables.%s = %s" % (classname, code)
+        #print(code)
 
         # save
-        self.save(classname + '.lua', code)
+        #self.save(classname + '.lua', code)
 
-    def _convertRow(self, desc, field2index, sheet, row, prefix):
-        row_content = {}
-        for field in desc.fields:
-            item = None
-            if field.cpp_type == 10:
-                child_desc = desc.fields_by_name[field.name].message_type
-                if field.label != 3:
-                    child_prefix = u"%s%s_" % (prefix, field.name)
-                    item = self._convertRow(child_desc, field2index, sheet, row, child_prefix)
+    def _convertRow(self, result, fields):
+        if len(fields) == 0 :
+            return
+
+        keys = sorted(fields.keys())
+        total = len(keys)
+
+        idx = 0
+        childfields = {}
+        while idx < total:
+            key = keys[idx]
+            value = fields[key]
+
+            path = key.split('#')
+            childitem = {"_meta":{"isdict":not path[-1].isdigit()}}
+            prefix = "#".join(path[:-1])
+            while idx < total:
+                k = keys[idx]
+                if k.startswith(prefix):
+                    p = k.split('#')
+                    childitem[p[-1]] = fields[k]
                 else:
-                    item = []
-                    for idx in range(1, 10):
-                        child_prefix = u"%s%s_%d_" % (prefix, field.name, idx)
-                        ishave = False
-                        for key in field2index.keys():
-                            if re.match(child_prefix, key):
-                                ishave = True
-                                break
-                        if ishave == False:
-                            break
-                        it = self._convertRow(child_desc, field2index, sheet, row, child_prefix)
-                        item.append(it)
-            elif field.label == 3:
-                item = []
-                for idx in range(1, 20):
-                    name = u"%s%s_%d" % (prefix, field.name, idx)
-                    if name not in field2index:
-                        break
-                    cell = sheet.cell(row, field2index[name])
-                    item.append(self._getCellValue(cell, field.cpp_type))
-            else:
-                name = u"%s%s" % (prefix, field.name)
-                if name not in field2index:
-                    raise Exception(u"Can't find the field. %s" % name)
-                cell = sheet.cell(row, field2index[name])
-                item = self._getCellValue(cell, field.cpp_type)
-            row_content[field.name] = item
-        return row_content
+                    idx = idx - 1
+                    break
+                idx = idx + 1
 
-    def _getCellValue(self, cell, field_type):
-        if field_type >= 1 and field_type <= 4: # int32 uint32 int64 uint64
+            if len(path) > 2:
+                childfields[prefix] = childitem
+            else:
+                result[prefix] = childitem 
+            idx = idx + 1
+
+        self._convertRow(result, childfields)
+
+    def _fixLevelType(self, item):
+        meta = item["_meta"]
+        del item["_meta"]
+
+        for (key, value) in item.items():
+            if isinstance(value, dict):
+                item[key] = self._fixLevelType(value)
+
+        if meta["isdict"]:
+            pass
+        else:
+            item = list(item.values()) # todo 检查values返回的顺序
+        return item
+
+    def _getCellValue(self, cell, vtype):
+        if vtype == "int":
             return self._getCellInt(cell)
-        elif field_type == 5 or field_type == 6: # double float
+        elif vtype == "float" or vtype == "double":
             return self._getCellFloat(cell)
-        elif field_type == 7: # bool
+        elif vtype == "bool":
             return self._getCellBool(cell)
-        elif field_type == 9: # string
+        elif vtype == "string": # string
             return self._getCellString(cell)
         else:
-            raise Exception(u"This type is invalid. %s" % field_type)
+            raise Exception(u"This type is invalid. %s" % vtype)
         
     def _getCellString(self, cell):
         cell_text = ""
@@ -230,7 +249,7 @@ class Converter:
             cell_text = u"%s" % dt
         elif cell.ctype == xlrd.XL_CELL_BOOLEAN:
             cell_text =  u"true" if cell.value else u"false"
-        return u'"%s"' % cell_text
+        return cell_text
     
     def _getCellInt(self, cell):
         if cell.ctype == xlrd.XL_CELL_TEXT or cell.ctype == xlrd.XL_CELL_NUMBER:
