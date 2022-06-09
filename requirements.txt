@@ -1,0 +1,11 @@
+antlr4-python3-runtime==4.7.2
+dbus-python==1.2.18
+distro==1.7.0
+et-xmlfile==1.1.0
+luaparser==3.1.1
+openpyxl==3.0.10
+protobuf==4.21.1
+PyGObject==3.42.0
+pymongo==4.1.1
+ssh-import-id==5.11
+xlrd==1.2.0

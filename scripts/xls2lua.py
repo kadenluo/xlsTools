@@ -1,4 +1,4 @@
-#!/usr/bin/python2
+#!/usr/bin/python3
 # -*-  coding:utf-8 -*-
 
 import os
@@ -7,10 +7,12 @@ import sys
 import time
 import datetime
 import xlrd
+import json
 import argparse
 
 sys.path.append("..")
 
+from google.protobuf.descriptor import FieldDescriptor
 from protocol import xls_pb2
 
 datemode = 0 # 时间戳模式 0: 1900-based, 1: 1904-based
@@ -23,8 +25,8 @@ class Converter:
         self._config = config
         for line in open(self._config.maps):
             items = line.split('=')
-            filename = items[0].strip().decode('utf-8')
-            classname = items[1].strip(u" \n").decode('utf-8')
+            filename = items[0].strip().encode("utf-8").decode('utf-8')
+            classname = items[1].strip(u" \n").encode("utf-8").decode('utf-8')
             self._xls2class[filename] = classname
 
     def _objectToStringWithIndent(self, data, level=1, func=None):
@@ -38,7 +40,7 @@ class Converter:
             content = []
             for key in sorted(data.keys(), func):
                 value = data[key]
-                if isinstance(key, str) or isinstance(key, unicode):
+                if isinstance(key, str):
                     content.append(u"%s = %s" % (key.strip('"'), self._objectToStringWithIndent(value, level+1, func)))
                 else:
                     content.append(u"[%s] = %s" % (key, self._objectToStringWithIndent(value, level+1, func)))
@@ -57,7 +59,7 @@ class Converter:
             result = u"{%s}" % (content)
         elif isinstance(data, dict):
             content = []
-            for key in sorted(data.keys(), func):
+            for key in sorted(data.keys(), key=func):
                 value = data[key]
                 content.append(u"%s=%s" % (key, self._objectToString(value, func)))
             content = u",".join(content)
@@ -70,6 +72,7 @@ class Converter:
         rows = []
         tostring = self._objectToString
         for row in data:
+            print("============", data)
             if not mainkey:
                 rows.append(u"%s%s" % (self._indent, tostring(row, func=field_sort_func)))
             else:
@@ -77,11 +80,12 @@ class Converter:
                 del row[mainkey]
                 left_split = u"["
                 right_split = u"]"
-                if isinstance(key, str) or isinstance(key, unicode):
+                if isinstance(key, str):
                     left_split = u""
                     right_split = u""
                     key = key.strip(u'"')
                 if len(row.items()) == 1:
+                    print("============", data)
                     rows.append(u"%s%s%s%s = %s" % (self._indent, left_split, key,  right_split, tostring(row.items()[0][1], func=field_sort_func)))
                 else:
                     rows.append(u"%s%s%s%s = %s" % (self._indent, left_split, key, right_split, tostring(row, func=field_sort_func)))
@@ -107,7 +111,7 @@ class Converter:
         if classname not in xls_pb2.DESCRIPTOR.message_types_by_name:
             raise Exception(u"Failed to find the class name. %s" % classname)
         desc = xls_pb2.DESCRIPTOR.message_types_by_name[classname]
-        assert (desc.fields[0].label == 3) and (desc.fields[0].cpp_type == 10)
+        assert (desc.fields[0].cpp_type == FieldDescriptor.CPPTYPE_MESSAGE)
         desc = desc.fields_by_name['list'].message_type
 
         filepath = u"%s/%s" % (self._config.input_dir, filename)
@@ -118,7 +122,7 @@ class Converter:
         assert ((nrows > 2) and (ncols > 1))
         field2index = {}
         mainkey = None
-        for col in xrange(ncols):
+        for col in range(ncols):
             value = sheet.cell(1, col).value
             if value.endswith('*'):
                 value = value.strip('*')
@@ -126,20 +130,37 @@ class Converter:
                 mainkey = value
             field2index[value] = col
 
-        result = []
-        for i in xrange(2, nrows):
-            item = self._convertRow(desc, field2index, sheet, i, "")
-            result.append(item)
+        if mainkey is None:
+            result = []
+        else:
+            result = {}
 
-        def field_sort_func(x, y):
-            if x in field2index and y in field2index:
-                return field2index[x] - field2index[y]
-            elif x in field2index and y not in field2index:
-                return -1
-            elif x not in field2index and y in field2index:
-                return 1
+        for i in range(2, nrows):
+            item = self._convertRow(desc, field2index, sheet, i, "")
+            if isinstance(result, list):
+                result.append(item)
             else:
-                return x < y
+                result[item[mainkey]] = item
+                del item[mainkey]
+
+        print(result)
+        #print(json.dumps(result, indent=4))
+
+        #def field_sort_func(x, y):
+        #    if x in field2index and y in field2index:
+        #        return field2index[x] - field2index[y]
+        #    elif x in field2index and y not in field2index:
+        #        return -1
+        #    elif x not in field2index and y in field2index:
+        #        return 1
+        #    else:
+        #        return x < y
+
+        def field_sort_func(x):
+            if x in field2index:
+                return field2index[x]
+            else:
+                return 0
         code = self.getCode(result, mainkey, field_sort_func)
         code = u"_G.tables = _G.tables or {}\n_G.tables.%s = %s" % (classname, code)
         print(code)
@@ -158,7 +179,7 @@ class Converter:
                     item = self._convertRow(child_desc, field2index, sheet, row, child_prefix)
                 else:
                     item = []
-                    for idx in xrange(1, 10):
+                    for idx in range(1, 10):
                         child_prefix = u"%s%s_%d_" % (prefix, field.name, idx)
                         ishave = False
                         for key in field2index.keys():
@@ -171,7 +192,7 @@ class Converter:
                         item.append(it)
             elif field.label == 3:
                 item = []
-                for idx in xrange(1, 20):
+                for idx in range(1, 20):
                     name = u"%s%s_%d" % (prefix, field.name, idx)
                     if name not in field2index:
                         break
