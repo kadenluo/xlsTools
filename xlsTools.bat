@@ -1,5 +1,5 @@
 @echo off
 path = %path%;.\tools;
 @echo on
-cd scripts && python xls2lua.py
+cd scripts && python xlsTools.py
 pause
