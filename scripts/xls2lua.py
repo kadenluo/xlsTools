@@ -11,25 +11,17 @@ import json
 import argparse
 from operator import itemgetter
 
-sys.path.append("..")
-
-from google.protobuf.descriptor import FieldDescriptor
-
 datemode = 0 # 时间戳模式 0: 1900-based, 1: 1904-based
 BOOL_YES = ["yes", "1", "是"]
 BOOL_NO = ["", "nil", "0", "false", "no", "none", "否", "无"]
 
 class Converter:
-    _config = {}
-    _xls2class = {}
-    _indent = "    "
+    _config = {} # 输入配置
+    _indent = "    " #缩进
+    _cachefile = "./.cache"
     def __init__(self, config):
         self._config = config
-        for line in open(self._config.maps):
-            items = line.split('=')
-            filename = items[0].strip().encode("utf-8").decode('utf-8')
-            classname = items[1].strip(" \n").encode("utf-8").decode('utf-8')
-            self._xls2class[filename] = classname
+
 
     def _toLua(self, data, level=1):
         lines = []
@@ -60,27 +52,58 @@ class Converter:
         return ", \n".join(lines)
 
     def save(self, output_type, filename, data):
-        out_dir = "{}/{}".format(self._config.output_dir, output_type)
+        out_dir = os.path.join(self._config.output_dir, output_type)
         if not os.path.exists(out_dir):
             os.makedirs(out_dir)
-        filepath = "{}/{}.{}".format(out_dir, filename, output_type)
+        filepath = os.path.join(out_dir, "{}.{}".format(filename, output_type))
         with open(filepath, 'wb') as f:
             f.write(data.encode('utf-8'))
 
     def convertAll(self):
-        for filename in self._xls2class.keys():
-            self.convert(filename)
+        history = {}
+        if not self._config.force:
+            if os.path.exists(self._cachefile):
+                with open(self._cachefile) as f:
+                    history = json.load(f)
 
-    def convert(self, filename):
-        if filename not in self._xls2class:
-            raise Exception("Failed to load config of this file. %s" % filename)
-        classname = self._xls2class[filename]
+        allfiles = {}
+        for filename in os.listdir(self._config.input_dir):
+            if filename.startswith("~"):
+                continue
 
-        filepath = "%s/%s" % (self._config.input_dir, filename)
-        worksheet = xlrd.open_workbook(filepath)
-        sheet = worksheet.sheet_by_index(0)
+            filepath = os.path.join(self._config.input_dir, filename)
+            mtime = os.stat(filepath).st_mtime
+            allfiles[filename] = mtime
+
+            if (filename not in history) or (history[filename] != mtime):
+                print("convert {} ...".format(filename))
+                self.convertFile(filename)
+                history[filename] = mtime
+                with open(self._cachefile, "w") as f:
+                    json.dump(history, f, indent=4)
+
+        # 清理cache
+        delkeys = []
+        for (filename, mtime) in history.items():
+            if filename not in allfiles:
+                delkeys.append(filename)
+        for k in delkeys:
+            del history[filename]
+        with open(self._cachefile, "w") as f:
+            json.dump(history, f, indent=4)
+
+        print("success!!!")
+
+    def convertFile(self, filename):
+        filepath = os.path.join(self._config.input_dir, filename)
+        wb = xlrd.open_workbook(filepath)
+        for sheet in wb.sheets():
+            self._convertSheet(sheet)
+
+    def _convertSheet(self, sheet):
         nrows = sheet.nrows
         ncols = sheet.ncols
+        classname = sheet.name
         assert ((nrows > 2) and (ncols > 1))
 
         mainkey = None
@@ -265,8 +288,9 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser("excel to lua converter")
     parser.add_argument("-i", "--input_dir", dest="input_dir", help="excel表文件目录", default="../xls")
     parser.add_argument("-o", "--output_dir", dest="output_dir", help="输出目录", default="../output")
-    parser.add_argument("-m", "--map_file", dest="maps", help="excel表与输出文件之间映射", default="../config.conf")
+    parser.add_argument("-f", "--force", help="强制导出所有表格", action="store_true")
     parser.add_argument("-t", "--type", dest="type", help="导出类型", default="lua")
     args = parser.parse_args()
     converter = Converter(args)
+    print(args)
     converter.convertAll()
