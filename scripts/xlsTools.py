@@ -76,7 +76,6 @@ class Converter:
             allfiles[filename] = mtime
 
             if (filename not in history) or (history[filename] != mtime):
-                print("convert {} ...".format(filename))
                 self.convertFile(filename)
                 history[filename] = mtime
                 with open(self._cachefile, "w") as f:
@@ -98,6 +97,7 @@ class Converter:
         filepath = os.path.join(self._config.input_dir, filename)
         wb = xlrd.open_workbook(filepath)
         for sheet in wb.sheets():
+            print("convert {}({})...".format(filename, sheet.name))
             self._convertSheet(sheet)
 
     def _convertSheet(self, sheet):
@@ -145,6 +145,9 @@ class Converter:
                 result.append(item)
             else:
                 k = item[mainkey]
+                del item[mainkey]
+                if len(item) == 1:
+                    item = list(item.values())[0]
                 result[k] = item
 
         #print(json.dumps(result, indent=4))
