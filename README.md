@@ -1,67 +1,166 @@
 # xlsTools
-xlsTools 用于将策划配置的excel表格转换成代码配置文件，比如将“.xls”、“.xlsx”格式的文件转换lua配置文件（目前只支持转换成lua文件）。
+xlsTools 用于将策划配置的excel表格转换成lua或json文件，支持xls和xlsx格式。
 # 使用示例
 目录结构
 ```lua
-|--protocol  
-|  |--xls.proto  # protobuf 协议文件配置
 |--scripts
-|  |--xls2lua.py  # excel转lua的转换工具
-|--tools
-|  |--protoc.exe  # 转换protobuf协议的工具
+|  |--xlsTools.py  # excel转表工具
 |--xls   # excel目录，以下是两个示例文件
 |  |--任务表.xlsx  
 |  |--系统参数表.xlsx
-|--config.conf # 转换配置文件
 |--xlsTools.bat # windows下的程序入口
 |--doc # 文档
 ```
-使用的时候需要修改3个地方：config.conf、protocol/xls.proto、xls/xxx.xlsx。具体使用步骤如下：
-1. 在protocol/xls.proto中添加新的数据结构定义：
+## sheet配置
+导表时以sheet为单位导出，一个sheet导出一个lua或json文件（sheet名即为导出文件的文件名，比如：sheet名为hello，导出之后的文件名为hello.lua或hello.json），一个excel里可以存在多个sheet。
+## 数据配置
+使用时，只需按照以下格式配置excel即可，表的前3行为表结构描述，表的数据从第4行开始。
+第1行：字段描述，仅用于方便查看，不导出到输出文件中；
+第2行：字段名称，字段名称遵循一下规则：
+	a. 带星号的字段为主key，一个sheet里最多只能有一个主key， 也可以没有；
+	b. 多层结构可通过#符号来表示，比如：“awards#1#id” 表示三层结构，三层结构的key分别为award，1，id。 如果key为数字，则该层为数组类型，如果key不是数字，则该层为字典类型。
+第3行：字段类型，只支持4种基础字段类型：int， float，bool,  string。可通过字段名称用基础类型组合成复杂的嵌套类型，比如数组、字典类型;
+第4+行: 具体数据值。
+![示例配置](/doc/images/任务表.png)  
+## 导表工具
+配置好excel表格之后，windows下直接启动xlsTools.bat开始一键导表（linux下启动脚本为xlsTools.sh），该脚本会自动将xls目录下的所有excel表格进行导出，导出目录存放在output目录中，默认导出为lua文件。如果需要修改默认导出规则，可执行scripts/xlsTools.py脚本导出，脚本参数如下：
+```shell
+# ./xlsTools.py -h
+usage: excel to lua converter [-h] [-i INPUT_DIR] [-o OUTPUT_DIR] [-f] [-t TYPE]
+
+options:
+  -h, --help            show this help message and exit
+  -i INPUT_DIR, --input_dir INPUT_DIR
+                        excel表文件目录
+  -o OUTPUT_DIR, --output_dir OUTPUT_DIR
+                        输出目录
+  -f, --force           强制导出所有表格
+  -t TYPE, --type TYPE  导出类型
+```
+## 输出文件
+### lua
 ```lua
-syntax = "proto2";
-
-message AwardItem{
-    required int32 id = 1;
-    required int32 num = 2;
-    optional int32 expire = 3;
-}
-
-message TaskItem{
-    required int32 id = 1;
-    required int32 type = 2;
-    required string name = 3;
-    required uint32 start_time = 4;
-    required uint32 end_time = 5;
-    repeated int32  conds = 6;
-    repeated AwardItem awards = 7;
-}
-
-message TaskList{
-    repeated TaskItem list = 1; 
+return {
+    [1000] = {
+        id = 1000, 
+        type = 1, 
+        name = [[杀死10个野怪]], 
+        start_time = 1577836800, 
+        end_time = 1609459200, 
+        conds = {
+            10, 
+            0, 
+            0
+        }, 
+        awards = {
+            {
+                expire = 0, 
+                id = 1000, 
+                num = 100
+            }, 
+            {
+                expire = 0, 
+                id = 1001, 
+                num = 100
+            }, 
+            {
+                expire = 0, 
+                id = 0, 
+                num = 0
+            }
+        }
+    }, 
+    [1001] = {
+        id = 1001, 
+        type = 2, 
+        name = [[累计存活50分钟]], 
+        start_time = 1575158400, 
+        end_time = 1577836800, 
+        conds = {
+            50, 
+            0, 
+            0
+        }, 
+        awards = {
+            {
+                expire = 0, 
+                id = 1000, 
+                num = 100
+            }, 
+            {
+                expire = 0, 
+                id = 1001, 
+                num = 100
+            }, 
+            {
+                expire = 0, 
+                id = 0, 
+                num = 0
+            }
+        }
+    }
 }
 ```
-2. 在xls目录下新增excel文件；  
-![示例配置](/doc/任务表.png)  
-如图，表格的第一行是标题，可以随便自定义。第二个行是结构定义，必须和protocol/xls.proto中定义的结构体对应。其规则如下：  
-a. 带“*”的表示这一列为主键，其对应的结构里不带“*”，一个表格里最多只能有一个主键；  
-b. 普通类型（即非repeated且类型为非结构类型）保持excel和结构体名对应即可，如“任务表.xlsx”里的id，type，name，start_time，end_time这些字段；  
-c. repeated类型的组合方式是:“结构体名_” + 索引。如“任务表.xlsx”里的cond_1, cond_2, cond_3；  
-d. 结构类型的，比如TaskItem.awards。其对应的应该是“任务表.xlsx”里的“awards_” + 索引 + “_id”, “awards_” + 索引 + “_num”, “awards_” + 索引 + “_expire”，这里的索引是因为TaskItem.awards是repeated类型的。如果TaskItem.awards是非repeated类型的，则其对应便是“awards_id”, “awards_num”, “awards_expire”。  
-3. 在config.conf目录下新增excel表格到具体结构的映射关系。如下：
-```lua
-任务表.xlsx = TaskList
-系统参数.xlsx = SystemParams
-```
-4. 运行xlsTools.bat程序进行转换。转换结果在output/lua下。如：
-```lua
-_G.tables = _G.tables or {}
-_G.tables.TaskList = {
-    [1000] = {type=1,name="杀死10个野怪",start_time=1577808000,end_time=1609430400,conds={10,0,0},awards={id=1000,num=100,expire=0}},
-    [1001] = {type=2,name="累计存活50分钟",start_time=1575129600,end_time=1577808000,conds={50,0,0},awards={id=1000,num=100,expire=0}}
+### json
+```json
+{
+    "1000": {
+        "id": 1000,
+        "type": 1,
+        "name": "\u6740\u6b7b10\u4e2a\u91ce\u602a",
+        "start_time": 1577874030,
+        "end_time": 1609459200,
+        "conds": [
+            true,
+            false,
+            false
+        ],
+        "awards": [
+            {
+                "expire": 0,
+                "id": 1000,
+                "num": 100
+            },
+            {
+                "expire": 0,
+                "id": 1001,
+                "num": 100
+            },
+            {
+                "expire": 0,
+                "id": 0,
+                "num": 0
+            }
+        ]
+    },
+    "1001": {
+        "id": 1001,
+        "type": 2,
+        "name": "\u7d2f\u8ba1\u5b58\u6d3b50\u5206\u949f",
+        "start_time": 1577874030,
+        "end_time": 1577836800,
+        "conds": [
+            true,
+            false,
+            false
+        ],
+        "awards": [
+            {
+                "expire": 0,
+                "id": 1000,
+                "num": 100
+            },
+            {
+                "expire": 0,
+                "id": 1001,
+                "num": 100
+            },
+            {
+                "expire": 0,
+                "id": 0,
+                "num": 0
+            }
+        ]
+    }
 }
 ```
-
-# 注意事项
-1. 目前支持将excel配置文件转换为lua文件，其它语言的支持待开发；
-2. 转换的时候只会转换每个excel表格的第一个sheet，所以每个excel里最多只能有1个sheet；
