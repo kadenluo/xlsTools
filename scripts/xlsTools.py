@@ -223,8 +223,77 @@ class Converter:
             return self._getCellBool(cell)
         elif vtype == "string": # string
             return self._getCellString(cell)
+        elif vtype == "list(int)":
+            return self._getCellListForInt(cell)
+        elif vtype == "list(float)":
+            return self._getCellListForFloat(cell)
+        elif vtype == "list(bool)":
+            return self._getCellListForBool(cell)
+        elif vtype == "list(string)":
+            return self._getCellListForString(cell)
         else:
             raise Exception("This type is invalid. %s" % vtype)
+
+    def _getCellListForInt(self, cell):
+        if cell.ctype == xlrd.XL_CELL_EMPTY:
+            return []
+        elif cell.ctype == xlrd.XL_CELL_TEXT:
+            result = []
+            value = cell.value.strip(' ').strip('\n')
+            for v in value.split(','):
+                result.append(int(v))
+            return result
+        elif cell.ctype == xlrd.XL_CELL_NUMBER:
+            return [int(cell.value)]
+        else:
+            raise Exception("Error: invalid cell type. type:{}".format(cell.ctype))
+
+    def _getCellListForFloat(self, cell):
+        if cell.ctype == xlrd.XL_CELL_EMPTY:
+            return []
+        elif cell.ctype == xlrd.XL_CELL_TEXT:
+            result = []
+            value = cell.value.strip(' ').strip('\n')
+            for v in value.split(','):
+                result.append(float(v))
+            return result
+        elif cell.ctype == xlrd.XL_CELL_NUMBER:
+            return [float(cell.value)]
+        else:
+            raise Exception("Error: invalid cell type. type:{}".format(cell.ctype))
+
+    def _getCellListForBool(self, cell):
+        if cell.ctype == xlrd.XL_CELL_EMPTY:
+            return []
+        elif cell.ctype == xlrd.XL_CELL_TEXT:
+            result = []
+            value = cell.value.strip(' ').strip('\n')
+            for v in value.split(','):
+                v = v.lower()
+                if v in BOOL_NO:
+                    v = False
+                elif value in BOOL_YES: 
+                    v =  True
+                else:
+                    raise Exception("Error: can't switch the value to bool. value:{}".format(v))
+                result.append(v)
+            return result
+        elif cell.ctype == xlrd.XL_CELL_NUMBER:
+            value = float(cell.value)
+            return [value != 0]
+        else:
+            raise Exception("Error: invalid cell type. type:{}".format(cell.ctype))
+
+    def _getCellListForString(self, cell):
+        if cell.ctype == xlrd.XL_CELL_EMPTY:
+            return []
+        elif cell.ctype == xlrd.XL_CELL_TEXT:
+            value = cell.value.strip(' ').strip('\n')
+            return value.split(',')
+        elif cell.ctype == xlrd.XL_CELL_NUMBER:
+            return [("%.2f"% cell.value).rstrip('0').rstrip('.')]
+        else:
+            raise Exception("Error: invalid cell type. type:{}".format(cell.ctype))
         
     def _getCellString(self, cell):
         if cell.ctype == xlrd.XL_CELL_EMPTY:
