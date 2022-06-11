@@ -108,6 +108,7 @@ class Converter:
 
         mainkey = None
         field2index = {}
+        uniqueFields = {} # 用于校验field重复问题
         for col in range(ncols):
             desc = self._getCellString(sheet.cell(0, col)).strip(' ')
             name = self._getCellString(sheet.cell(1, col)).strip(' ')
@@ -120,6 +121,8 @@ class Converter:
                 name = name.strip('*')
                 assert(mainkey == None)
                 mainkey = name
+            assert(name not in uniqueFields)
+            uniqueFields[name] = True
             field2index[col] = {"desc":desc, "name":name, "type":vtype, "levels":name.split('#')}
 
         if mainkey is None:
@@ -146,8 +149,6 @@ class Converter:
             else:
                 k = item[mainkey]
                 del item[mainkey]
-                if len(item) == 1:
-                    item = list(item.values())[0]
                 result[k] = item
 
         #print(json.dumps(result, indent=4))
@@ -292,7 +293,7 @@ class Converter:
         elif cell.ctype == xlrd.XL_CELL_TEXT:
             return cell.value
         elif cell.ctype == xlrd.XL_CELL_NUMBER:
-            return ("%.2f" % cell.value).rstrip('0').rstrip('.')
+            return str(cell.value)
         elif cell.ctype == xlrd.XL_CELL_DATE:
             dt = xlrd.xldate.xldate_as_datetime(cell.value, datemode)
             return "%s" % dt
@@ -320,7 +321,7 @@ class Converter:
         elif cell.ctype == xlrd.XL_CELL_TEXT:
             return float(cell.value)
         elif cell.ctype == xlrd.XL_CELL_NUMBER:
-            return float(("%.2f" % cell.value).rstrip('0').rstrip('.'))
+            return float(cell.value)
         elif cell.ctype == xlrd.XL_CELL_DATE:
             dt = xlrd.xldate.xldate_as_datetime(cell.value, datemode)
             return "%.2f" % time.mktime(dt.timetuple())
@@ -349,11 +350,11 @@ class Converter:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser("excel to lua converter")
-    parser.add_argument("-i", "--input_dir", dest="input_dir", help="excel表文件目录", default="../xls")
-    parser.add_argument("-o", "--output_dir", dest="output_dir", help="输出目录", default="../output")
-    parser.add_argument("-f", "--force", help="强制导出所有表格", action="store_true")
-    parser.add_argument("-t", "--type", dest="type", help="导出类型", default="lua")
+    parser.add_argument("-i", dest="input_dir", help="excel表文件目录", default="../xls")
+    parser.add_argument("-o", dest="output_dir", help="输出目录", default="../output")
+    parser.add_argument("-t", dest="type", metavar='lua|json', help="导出类型(默认为导出为lua文件)", default="lua")
+    parser.add_argument("-f", dest="force", help="强制导出所有表格", action="store_true")
     args = parser.parse_args()
+    assert(args.type == "lua" or args.type == "json")
     converter = Converter(args)
-    print(args)
     converter.convertAll()
