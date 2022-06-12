@@ -125,10 +125,12 @@ class Converter:
             uniqueFields[name] = True
             field2index[col] = {"desc":desc, "name":name, "type":vtype, "levels":name.split('#')}
 
+        uniqueFields.clear()
         if mainkey is None:
             result = []
         else:
             result = {}
+
         for row in range(3, nrows):
             item = {"_meta":{"isdict":True}}
             fields = {}
