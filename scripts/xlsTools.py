@@ -11,6 +11,19 @@ import json
 import argparse
 from operator import itemgetter
 
+class Logger():
+    def __init__(self):
+        pass
+
+    def debug(self, msg):
+        print(msg)
+
+    def info(self, msg):
+        print(msg)
+
+    def error(self, msg):
+        print(msg)
+
 datemode = 0 # 时间戳模式 0: 1900-based, 1: 1904-based
 BOOL_YES = ["yes", "1", "是"]
 BOOL_NO = ["", "nil", "0", "false", "no", "none", "否", "无"]
@@ -19,9 +32,11 @@ class Converter:
     _config = {} # 输入配置
     _indent = "    " #缩进
     _cachefile = "./.cache"
-    def __init__(self, config):
+    _logger = None
+    def __init__(self, config, logger):
+        self._logger = logger
         self._config = config
-
+        assert(self._config.type == "all" or self._config.type == "lua" or self._config.type == "json")
 
     def _toLua(self, data, level=1):
         lines = []
@@ -91,13 +106,13 @@ class Converter:
         with open(self._cachefile, "w") as f:
             json.dump(history, f, indent=4)
 
-        print("success!!!")
+        self._logger.info("success!!!")
 
     def convertFile(self, filename):
         filepath = os.path.join(self._config.input_dir, filename)
         wb = xlrd.open_workbook(filepath)
         for sheet in wb.sheets():
-            print("convert {}({})...".format(filename, sheet.name))
+            self._logger.info("convert {}({})...".format(filename, sheet.name))
             self._convertSheet(sheet)
 
     def _convertSheet(self, sheet):
@@ -153,18 +168,16 @@ class Converter:
                 del item[mainkey]
                 result[k] = item
 
-        #print(json.dumps(result, indent=4))
+        #self._logger.info(json.dumps(result, indent=4))
 
-        if self._config.type == "lua":
+        if self._config.type == "all" or self._config.type == "lua":
             luaTable = self._toLua(result)
             code = "return %s" % (luaTable)
-        elif self._config.type == "json":
-            code = json.dumps(result, indent=4)
-        else:
-            raise Exception("Error: invalid output type.")
+            self.save(self._config.type, classname, code)
 
-        # save
-        self.save(self._config.type, classname, code)
+        if self._config.type == "all" or self._config.type == "json":
+            code = json.dumps(result, indent=4)
+            self.save(self._config.type, classname, code)
 
     def _convertRow(self, result, fields):
         if len(fields) == 0 :
@@ -354,9 +367,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser("excel to lua converter")
     parser.add_argument("-i", dest="input_dir", help="excel表文件目录", default="../xls")
     parser.add_argument("-o", dest="output_dir", help="输出目录", default="../output")
-    parser.add_argument("-t", dest="type", metavar='lua|json', help="导出类型(默认为导出为lua文件)", default="lua")
+    parser.add_argument("-t", dest="type", metavar='lua|json|all', help="导出类型(默认为导出为lua文件)", default="lua")
     parser.add_argument("-f", dest="force", help="强制导出所有表格", action="store_true")
     args = parser.parse_args()
-    assert(args.type == "lua" or args.type == "json")
-    converter = Converter(args)
+    converter = Converter(args, Logger())
     converter.convertAll()
