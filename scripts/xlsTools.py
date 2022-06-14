@@ -9,6 +9,7 @@ import datetime
 import xlrd
 import json
 import argparse
+from luaparser import ast
 from operator import itemgetter
 
 class Logger():
@@ -69,7 +70,7 @@ class Converter:
     def save(self, output_type, filename, data):
         out_dir = os.path.join(self._config.output_dir, output_type)
         if not os.path.exists(out_dir):
-            os.makedirs(out_dir)
+            os.makedirs(out_dir, mode=0o755)
         filepath = os.path.join(out_dir, "{}.{}".format(filename, output_type))
         with open(filepath, 'wb') as f:
             f.write(data.encode('utf-8'))
@@ -172,12 +173,13 @@ class Converter:
 
         if self._config.type == "all" or self._config.type == "lua":
             luaTable = self._toLua(result)
-            code = "return %s" % (luaTable)
-            self.save(self._config.type, classname, code)
+            code = "local data = %s\n\nreturn data" % (luaTable)
+            ast.parse(code)
+            self.save("lua", classname, code)
 
         if self._config.type == "all" or self._config.type == "json":
             code = json.dumps(result, indent=4)
-            self.save(self._config.type, classname, code)
+            self.save("json", classname, code)
 
     def _convertRow(self, result, fields):
         if len(fields) == 0 :

@@ -1,2 +1,2 @@
 
-cd scripts && python3 xlsTools.py 
+python3 scripts/xlsTools.py -f

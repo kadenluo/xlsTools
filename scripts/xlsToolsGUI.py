@@ -70,6 +70,7 @@ class mainWindow():
         inputDirLabel.setAlignment(Qt.AlignCenter)
         inputDirLine = QLineEdit(widget)
         inputDirLine.setText(self.inputDir)
+        #inputDirLine.setFocusPolicy(Qt.NoFocus)
         inputDirButton = QPushButton("打开文件夹")
         inputDirButton.clicked.connect(self.onInputDialogClicked)
         inputDirLayout.addWidget(inputDirLabel)
@@ -82,6 +83,7 @@ class mainWindow():
         outputDirLabel.setAlignment(Qt.AlignCenter)
         outputDirLine = QLineEdit(widget)
         outputDirLine.setText(self.outputDir)
+        #outputDirLine.setFocusPolicy(Qt.NoFocus)
         outputDirButton = QPushButton("打开文件夹")
         outputDirButton.clicked.connect(self.onOutputDialogClicked)
         outputDirLayout.addWidget(outputDirLabel)
@@ -124,9 +126,8 @@ class mainWindow():
         doLayout = QHBoxLayout()
         doButton = QPushButton("执行")
         doButton.clicked.connect(self.do)
-        #doButton.setFixedSize(70, 70)
         doButton.setStyleSheet("background-color:rgb(0, 105, 205)");
-        doLayout.addStretch(10)
+        doLayout.addStretch()
         doLayout.addWidget(doButton)
         doLayout.addStretch()
 
