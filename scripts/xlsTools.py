@@ -9,6 +9,7 @@ import datetime
 import xlrd
 import json
 import argparse
+import traceback
 from luaparser import ast
 from operator import itemgetter
 
@@ -17,13 +18,13 @@ class Logger():
         pass
 
     def debug(self, msg):
-        print(msg)
+        print("[DEBUG] {}".format(msg))
 
     def info(self, msg):
-        print(msg)
+        print("[INFO] {}".format(msg))
 
     def error(self, msg):
-        print(msg)
+        print("[ERROR] {}".format(msg))
 
 datemode = 0 # 时间戳模式 0: 1900-based, 1: 1904-based
 BOOL_YES = ["yes", "1", "是"]
@@ -76,38 +77,41 @@ class Converter:
             f.write(data.encode('utf-8'))
 
     def convertAll(self):
-        history = {}
-        if not self._config.force:
-            if os.path.exists(self._cachefile):
-                with open(self._cachefile) as f:
-                    history = json.load(f)
+        try:
+            history = {}
+            if not self._config.force:
+                if os.path.exists(self._cachefile):
+                    with open(self._cachefile) as f:
+                        history = json.load(f)
 
-        allfiles = {}
-        for filename in os.listdir(self._config.input_dir):
-            if filename.startswith("~"):
-                continue
+            allfiles = {}
+            for filename in os.listdir(self._config.input_dir):
+                if filename.startswith("~"):
+                    continue
 
-            filepath = os.path.join(self._config.input_dir, filename)
-            mtime = os.stat(filepath).st_mtime
-            allfiles[filename] = mtime
+                filepath = os.path.join(self._config.input_dir, filename)
+                mtime = os.stat(filepath).st_mtime
+                allfiles[filename] = mtime
 
-            if (filename not in history) or (history[filename] != mtime):
-                self.convertFile(filename)
-                history[filename] = mtime
-                with open(self._cachefile, "w") as f:
-                    json.dump(history, f, indent=4)
+                if (filename not in history) or (history[filename] != mtime):
+                    self.convertFile(filename)
+                    history[filename] = mtime
+                    with open(self._cachefile, "w") as f:
+                        json.dump(history, f, indent=4)
 
-        # 清理cache
-        delkeys = []
-        for (filename, mtime) in history.items():
-            if filename not in allfiles:
-                delkeys.append(filename)
-        for k in delkeys:
-            del history[filename]
-        with open(self._cachefile, "w") as f:
-            json.dump(history, f, indent=4)
+            # 清理cache
+            delkeys = []
+            for (filename, mtime) in history.items():
+                if filename not in allfiles:
+                    delkeys.append(filename)
+            for k in delkeys:
+                del history[filename]
+            with open(self._cachefile, "w") as f:
+                json.dump(history, f, indent=4)
 
-        self._logger.info("success!!!")
+            self._logger.info("success!!!")
+        except Exception as ex:
+            self._logger.error(traceback.format_exc())
 
     def convertFile(self, filename):
         filepath = os.path.join(self._config.input_dir, filename)

@@ -16,10 +16,10 @@ class UILogger(Logger):
         self.box = box
 
     def info(self, msg):
-        self.box.append(msg)
+        self.box.append("[INFO] {}".format(msg))
 
     def error(self, msg):
-        self.box.append(msg)
+        self.box.append("[ERROR] {}".format(msg))
 
 class mainWindow():
     def __init__(self):
@@ -54,6 +54,7 @@ class mainWindow():
         args.type = self.exportType
         args.force = self.isforce
         self.progressText.clear()
+        logger = UILogger(self.progressText)
         self.converter = Converter(args, UILogger(self.progressText))
         self.converter.convertAll()
 
