@@ -7,7 +7,7 @@ from PyQt5.QtCore import *
 from PyQt5.QtGui import *
 from PyQt5.QtWidgets import *
 from PyQt5.QtCore import Qt
-from scripts.xlsTools import Converter, Logger
+from xlsTools import Converter, Logger
 
 
 class UILogger(Logger):
