@@ -3,12 +3,12 @@
 
 import sys
 import argparse
+from datetime import datetime
 from PyQt5.QtCore import *
 from PyQt5.QtGui import *
 from PyQt5.QtWidgets import *
 from PyQt5.QtCore import Qt
 from xlsTools import Converter, Logger
-
 
 class UILogger(Logger):
     def __init__(self, box):
@@ -16,16 +16,17 @@ class UILogger(Logger):
         self.box = box
 
     def info(self, msg):
-        self.box.append("[INFO] {}".format(msg))
+        self.box.append("{} [INFO] {}".format(datetime.now().strftime('%Y-%m-%d %H:%M:%S'), msg))
 
     def error(self, msg):
-        self.box.append("[ERROR] {}".format(msg))
+        self.box.append("{} [ERROR] {}".format(datetime.now().strftime('%Y-%m-%d %H:%M:%S'), msg))
 
 class mainWindow():
     def __init__(self):
         self.inputDir = "./xls"
         self.outputDir = "./output"
-        self.exportType = "all"
+        self.exportType = "server"
+        self.outputType = "lua"
         self.isforce = False
 
     def onInputDialogClicked(self):
@@ -34,10 +35,16 @@ class mainWindow():
     def onOutputDialogClicked(self):
         self.outputDir = QFileDialog.getExistingDirectory(None, "选取文件", "./")
 
-    def onExportTypeClicked(self, box):
+    def onOutputTypeClicked(self, box):
         self.allTypeBox.setChecked(False)
         self.jsonTypeBox.setChecked(False)
         self.luaTypeBox.setChecked(False)
+        box.setChecked(True)
+        self.outputType = box.text()
+
+    def onExportTypeClicked(self, box):
+        self.clientTypeBox.setChecked(False)
+        self.serverTypeBox.setChecked(False)
         box.setChecked(True)
         self.exportType = box.text()
 
@@ -51,8 +58,9 @@ class mainWindow():
         args = argparse.Namespace()
         args.input_dir = self.inputDir
         args.output_dir = self.outputDir
-        args.type = self.exportType
+        args.type = self.outputType
         args.force = self.isforce
+        args.export = self.exportType
         self.progressText.clear()
         logger = UILogger(self.progressText)
         self.converter = Converter(args, UILogger(self.progressText))
@@ -91,22 +99,35 @@ class mainWindow():
         outputDirLayout.addWidget(outputDirLine)
         outputDirLayout.addWidget(outputDirButton)
 
-        exportGroupBox = QGroupBox("导出类型")
+        exportGroupBox = QGroupBox("表格类型")
         exportGroupBox.setFlat(False)
-        self.allTypeBox = QCheckBox("all")
-        self.allTypeBox.setChecked(self.exportType == "all")
-        self.allTypeBox.clicked.connect(lambda:self.onExportTypeClicked(self.allTypeBox))
-        self.jsonTypeBox = QCheckBox("json")
-        self.jsonTypeBox.setChecked(self.exportType == "json")
-        self.jsonTypeBox.clicked.connect(lambda:self.onExportTypeClicked(self.jsonTypeBox))
-        self.luaTypeBox = QCheckBox("lua")
-        self.luaTypeBox.setChecked(self.exportType == "lua")
-        self.luaTypeBox.clicked.connect(lambda:self.onExportTypeClicked(self.luaTypeBox))
+        self.clientTypeBox = QCheckBox("client")
+        self.clientTypeBox.setChecked(self.exportType == "client")
+        self.clientTypeBox.clicked.connect(lambda:self.onExportTypeClicked(self.clientTypeBox))
+        self.serverTypeBox = QCheckBox("server")
+        self.serverTypeBox.setChecked(self.exportType == "server")
+        self.serverTypeBox.clicked.connect(lambda:self.onExportTypeClicked(self.serverTypeBox))
         exportTypeLayout = QHBoxLayout()
-        exportTypeLayout.addWidget(self.allTypeBox)
-        exportTypeLayout.addWidget(self.jsonTypeBox)
-        exportTypeLayout.addWidget(self.luaTypeBox)
+        exportTypeLayout.addWidget(self.clientTypeBox)
+        exportTypeLayout.addWidget(self.serverTypeBox)
         exportGroupBox.setLayout(exportTypeLayout)
+
+        outputGroupBox = QGroupBox("输出类型")
+        outputGroupBox.setFlat(False)
+        self.allTypeBox = QCheckBox("all")
+        self.allTypeBox.setChecked(self.outputType == "all")
+        self.allTypeBox.clicked.connect(lambda:self.onOutputTypeClicked(self.allTypeBox))
+        self.jsonTypeBox = QCheckBox("json")
+        self.jsonTypeBox.setChecked(self.outputType == "json")
+        self.jsonTypeBox.clicked.connect(lambda:self.onOutputTypeClicked(self.jsonTypeBox))
+        self.luaTypeBox = QCheckBox("lua")
+        self.luaTypeBox.setChecked(self.outputType == "lua")
+        self.luaTypeBox.clicked.connect(lambda:self.onOutputTypeClicked(self.luaTypeBox))
+        outputTypeLayout = QHBoxLayout()
+        outputTypeLayout.addWidget(self.allTypeBox)
+        outputTypeLayout.addWidget(self.jsonTypeBox)
+        outputTypeLayout.addWidget(self.luaTypeBox)
+        outputGroupBox.setLayout(outputTypeLayout)
 
         forceGroupBox = QGroupBox("是否强制导出所有表格")
         forceGroupBox.setFlat(False)
@@ -136,6 +157,7 @@ class mainWindow():
         mainLayout.addLayout(inputDirLayout)
         mainLayout.addLayout(outputDirLayout)
         mainLayout.addWidget(exportGroupBox)
+        mainLayout.addWidget(outputGroupBox)
         mainLayout.addWidget(forceGroupBox)
         mainLayout.addWidget(self.progressText)
         mainLayout.addWidget(doButton)

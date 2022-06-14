@@ -37,8 +37,9 @@ class Converter:
     _logger = None
     def __init__(self, config, logger):
         self._logger = logger
+        assert(config.type == "all" or config.type == "lua" or config.type == "json")
+        assert(config.export == "server" or config.export == "client")
         self._config = config
-        assert(self._config.type == "all" or self._config.type == "lua" or self._config.type == "json")
 
     def _toLua(self, data, level=1):
         lines = []
@@ -124,7 +125,7 @@ class Converter:
         nrows = sheet.nrows
         ncols = sheet.ncols
         classname = sheet.name
-        assert ((nrows > 2) and (ncols > 1))
+        assert ((nrows > 3) and (ncols > 1))
 
         mainkey = None
         field2index = {}
@@ -132,9 +133,16 @@ class Converter:
         for col in range(ncols):
             desc = self._getCellString(sheet.cell(0, col)).strip(' ')
             name = self._getCellString(sheet.cell(1, col)).strip(' ')
-            vtype =self._getCellString(sheet.cell(2, col)).strip(' ')
+            vtype = self._getCellString(sheet.cell(2, col)).strip(' ')
+            export = self._getCellString(sheet.cell(3, col)).strip(' ').lower()
 
             if len(name) == 0:
+                continue
+
+            assert(export == "all" or export == "" or export == "client" or export == "server")
+            if export == "all" or export == "" or self._config.export == export:
+                pass
+            else:
                 continue
 
             if name.startswith('*'):
@@ -150,8 +158,7 @@ class Converter:
             result = []
         else:
             result = {}
-
-        for row in range(3, nrows):
+        for row in range(4, nrows):
             item = {"_meta":{"isdict":True}}
             fields = {}
             for col in range(ncols):
@@ -375,6 +382,7 @@ if __name__ == "__main__":
     parser.add_argument("-o", dest="output_dir", help="输出目录", default="../output")
     parser.add_argument("-t", dest="type", metavar='lua|json|all', help="导出类型(默认为导出为lua文件)", default="lua")
     parser.add_argument("-f", dest="force", help="强制导出所有表格", action="store_true")
+    parser.add_argument("-e", dest="export", metavar="server|client", help="导出表格的类型（服务端导表or客户端导表）", default="server")
     args = parser.parse_args()
     converter = Converter(args, Logger())
     converter.convertAll()
