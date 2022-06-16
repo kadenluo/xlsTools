@@ -70,7 +70,7 @@ class Converter:
         return ", \n".join(lines)
 
     def save(self, output_type, filename, data):
-        out_dir = os.path.join(self._config.output_dir, output_type)
+        out_dir = os.path.join(self._config.output_dir, self._config.export, output_type)
         if not os.path.exists(out_dir):
             os.makedirs(out_dir, mode=0o755)
         filepath = os.path.join(out_dir, "{}.{}".format(filename, output_type))

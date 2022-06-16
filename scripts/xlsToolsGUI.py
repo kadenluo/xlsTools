@@ -31,9 +31,11 @@ class mainWindow():
 
     def onInputDialogClicked(self):
         self.inputDir = QFileDialog.getExistingDirectory(None, "选取文件", "./")
+        self.inputDirLine.setText(self.inputDir)
 
     def onOutputDialogClicked(self):
         self.outputDir = QFileDialog.getExistingDirectory(None, "选取文件", "./")
+        self.outputDirLine.setText(self.outputDir)
 
     def onOutputTypeClicked(self, box):
         self.allTypeBox.setChecked(False)
@@ -77,26 +79,26 @@ class mainWindow():
         inputDirLabel = QLabel(widget)
         inputDirLabel.setText("excel目录:")
         inputDirLabel.setAlignment(Qt.AlignCenter)
-        inputDirLine = QLineEdit(widget)
-        inputDirLine.setText(self.inputDir)
-        #inputDirLine.setFocusPolicy(Qt.NoFocus)
+        self.inputDirLine = QLineEdit(widget)
+        self.inputDirLine.setText(self.inputDir)
+        #self.inputDirLine.setFocusPolicy(Qt.NoFocus)
         inputDirButton = QPushButton("打开文件夹")
         inputDirButton.clicked.connect(self.onInputDialogClicked)
         inputDirLayout.addWidget(inputDirLabel)
-        inputDirLayout.addWidget(inputDirLine)
+        inputDirLayout.addWidget(self.inputDirLine)
         inputDirLayout.addWidget(inputDirButton)
 
         outputDirLayout = QHBoxLayout()
         outputDirLabel = QLabel(widget)
         outputDirLabel.setText("输出目录:")
         outputDirLabel.setAlignment(Qt.AlignCenter)
-        outputDirLine = QLineEdit(widget)
-        outputDirLine.setText(self.outputDir)
-        #outputDirLine.setFocusPolicy(Qt.NoFocus)
+        self.outputDirLine = QLineEdit(widget)
+        self.outputDirLine.setText(self.outputDir)
+        #self.outputDirLine.setFocusPolicy(Qt.NoFocus)
         outputDirButton = QPushButton("打开文件夹")
         outputDirButton.clicked.connect(self.onOutputDialogClicked)
         outputDirLayout.addWidget(outputDirLabel)
-        outputDirLayout.addWidget(outputDirLine)
+        outputDirLayout.addWidget(self.outputDirLine)
         outputDirLayout.addWidget(outputDirButton)
 
         exportGroupBox = QGroupBox("表格类型")
