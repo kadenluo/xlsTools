@@ -25,7 +25,9 @@ xlsTools 用于将策划配置的excel表格转换成lua或json文件，支持xl
 ![示例配置](/doc/images/任务表.png)  
 
 ## 导表工具
-配置好excel表格之后，windows下直接启动xlsTools.bat开始一键导表（linux下启动脚本为xlsTools.sh），该脚本会自动将xls目录下的所有excel表格进行导出，导出目录存放在output目录中，默认导出为lua文件。如果需要修改默认导出规则，可执行scripts/xlsTools.py脚本导出，脚本参数如下：
+配置好excel表格之后，启动根目录下的xlsToolsGUI.exe工具，启动界面如下：
+![gui](/doc/images/gui.png)
+在linux端，可能没有GUI，此时可以直接调用转表脚本（./scripts/xlsTools.py）进行转表，使用如下：
 ```shell
 # ./xlsTools.py -h
 usage: excel to lua converter [-h] [-i INPUT_DIR] [-o OUTPUT_DIR] [-f] [-t TYPE]
@@ -33,11 +35,12 @@ usage: excel to lua converter [-h] [-i INPUT_DIR] [-o OUTPUT_DIR] [-f] [-t TYPE]
 options:
   -h, --help            show this help message and exit
   -i INPUT_DIR, --input_dir INPUT_DIR
-                        excel表文件目录
+                        excel表文件目录（默认为../xls）
   -o OUTPUT_DIR, --output_dir OUTPUT_DIR
-                        输出目录
+                        输出目录（默认为../output)
+  -t TYPE, --type TYPE  导出类型（lua|json|all）,默认为lua
   -f, --force           强制导出所有表格
-  -t TYPE, --type TYPE  导出类型
+  -e TYPE, --export TYPE 表格类型（server|client），默认为server，表示导出的表格为server端使用的表
 ```
 ## 输出文件
 ### lua
@@ -166,3 +169,7 @@ return {
     }
 }
 ```
+
+# TODO
+* 枚举变量的支持；
+* pb导出；
