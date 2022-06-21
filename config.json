@@ -1,0 +1,7 @@
+{
+    "inputDir": "./xls",
+    "outputDir": "./output",
+    "exportType": "server",
+    "outputType": "lua",
+    "isForce": true
+}

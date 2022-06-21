@@ -2,6 +2,8 @@
 # -*-  coding:utf-8 -*-
 
 import sys
+import os
+import json
 import argparse
 from datetime import datetime
 from PyQt5.QtCore import *
@@ -22,12 +24,23 @@ class UILogger(Logger):
         self.box.append("{} [ERROR] {}".format(datetime.now().strftime('%Y-%m-%d %H:%M:%S'), msg))
 
 class mainWindow():
-    def __init__(self):
+    def __init__(self, cfgfile):
+        self.isForce = False
         self.inputDir = "./xls"
         self.outputDir = "./output"
         self.exportType = "server"
         self.outputType = "lua"
-        self.isforce = False
+        if os.path.exists(cfgfile):
+            with open(cfgfile) as f:
+                cfg = json.load(f)
+                self.inputDir = cfg["inputDir"]
+                self.outputDir = cfg["outputDir"]
+                self.exportType = cfg["exportType"]
+                self.outputType = cfg["outputType"]
+                self.isForce = cfg["isForce"]
+
+    def __str__(self):
+        return json.dumps(self.__dict__)
 
     def onInputDialogClicked(self):
         self.inputDir = QFileDialog.getExistingDirectory(None, "选取文件", "./")
@@ -54,18 +67,17 @@ class mainWindow():
         self.forceFalseBox.setChecked(False)
         self.forceTrueBox.setChecked(False)
         box.setChecked(True)
-        self.isforce = box.text() == "是"
+        self.isForce = box.text() == "是"
 
     def do(self):
         args = argparse.Namespace()
         args.input_dir = self.inputDir
         args.output_dir = self.outputDir
         args.type = self.outputType
-        args.force = self.isforce
+        args.force = self.isForce
         args.export = self.exportType
         self.progressText.clear()
-        logger = UILogger(self.progressText)
-        self.converter = Converter(args, UILogger(self.progressText))
+        self.converter = Converter(args, self.logger)
         self.converter.convertAll()
 
     def MainLoop(self):
@@ -134,10 +146,10 @@ class mainWindow():
         forceGroupBox = QGroupBox("是否强制导出所有表格")
         forceGroupBox.setFlat(False)
         self.forceTrueBox = QCheckBox("是")
-        self.forceTrueBox.setChecked(self.isforce)
+        self.forceTrueBox.setChecked(self.isForce)
         self.forceTrueBox.clicked.connect(lambda:self.onForceClicked(self.forceTrueBox))
         self.forceFalseBox = QCheckBox("否")
-        self.forceFalseBox.setChecked(not self.isforce)
+        self.forceFalseBox.setChecked(not self.isForce)
         self.forceFalseBox.clicked.connect(lambda:self.onForceClicked(self.forceFalseBox))
         forceLayout = QHBoxLayout()
         forceLayout.addWidget(self.forceTrueBox)
@@ -146,6 +158,7 @@ class mainWindow():
 
         self.progressText = QTextEdit()
         self.progressText.setReadOnly(True)
+        self.logger = UILogger(self.progressText)
 
         doLayout = QHBoxLayout()
         doButton = QPushButton("执行")
@@ -170,5 +183,5 @@ class mainWindow():
         sys.exit(app.exec_())
 
 if __name__ == "__main__":
-    window = mainWindow()
+    window = mainWindow("./config.json")
     window.MainLoop()
