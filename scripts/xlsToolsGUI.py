@@ -137,7 +137,7 @@ class mainWindow():
         serverOutputDirLayout.addWidget(self.serverOutputDirLine, stretch=8)
         serverOutputDirLayout.addWidget(serverOutputDirButton, stretch=1)
 
-        outputGroupBox = QGroupBox("输出类型")
+        outputGroupBox = QGroupBox("导出类型")
         outputGroupBox.setFlat(False)
         self.allTypeBox = QCheckBox("all")
         self.allTypeBox.setChecked(self.outputType == "all")

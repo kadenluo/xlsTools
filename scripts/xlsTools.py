@@ -73,6 +73,7 @@ class Converter:
         if ftype == "all" or ftype == "lua":
             luaTable = self._toLua(data)
             code = "local data = %s\n\nreturn data" % (luaTable)
+            print(code)
             ast.parse(code)
             filepath = os.path.join(output_dir, "{}.lua".format(filename))
             self.saveFile(filepath, code)
@@ -199,6 +200,8 @@ class Converter:
                 meta = field2index[col]
                 value = self._getCellValue(sheet.cell(row, col), meta["type"]) 
                 key = meta["name"]
+                #if re.match("\d\.?0?", key):
+                #    key = "[{}]".format(int(float(key))
                 etype = meta["etype"]
                 if len(meta["levels"]) == 1:
                     if etype == "all" or etype == "client":
@@ -217,9 +220,19 @@ class Converter:
             if isinstance(clientResult, list):
                 clientResult.append(clientItem)
             else:
-                k = clientItem[mainkey]
-                del clientItem[mainkey]
-                clientResult[k] = clientItem
+                if mainkey is None:
+                    clientResult.append(clientItem)
+                else:
+                    k = clientItem[mainkey]
+                    del clientItem[mainkey]
+                    if len(clientItem) == 1:
+                        it = list(clientItem.items())[0]
+                        if it[0].startswith('_'):
+                            clientResult[k] = it[1]
+                        else:
+                            clientResult[k] = clientItem
+                    else:
+                        clientResult[k] = clientItem
 
             # server
             self._convertRow(serverItem, serverFields)
@@ -227,9 +240,19 @@ class Converter:
             if isinstance(serverFields, list):
                 serverResult.append(serverItem)
             else:
-                k = serverItem[mainkey]
-                del serverItem[mainkey]
-                serverResult[k] = serverItem
+                if mainkey is None:
+                    serverResult.append(serverItem)
+                else:
+                    k = serverItem[mainkey]
+                    del serverItem[mainkey]
+                    if len(serverItem) == 1:
+                        it = list(serverItem.items())[0]
+                        if it[0].startswith('_'):
+                            serverResult[k] = it[1]
+                        else:
+                            serverResult[k] = serverItem
+                    else:
+                        serverResult[k] = serverItem
 
         return clientResult, serverResult
 
