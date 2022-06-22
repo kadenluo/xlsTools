@@ -29,7 +29,8 @@ class mainWindow():
         self.inputDir = "./xls"
         self.clientOutputDir = "./output/client"
         self.serverOutputDir = "./output/server"
-        self.outputType = "lua"
+        self.clientOutputType = "lua"
+        self.serverOutputType = "lua"
         self.excludeFiles = []
         if os.path.exists(cfgfile):
             with open(cfgfile, 'r') as f:
@@ -37,7 +38,8 @@ class mainWindow():
                 self.inputDir = "inputDir" in cfg and cfg["inputDir"] or self.inputDir
                 self.clientOutputDir = "clientOutputDir" in cfg and cfg["clientOutputDir"] or self.clientOutputDir
                 self.serverOutputDir = "serverOutputDir" in cfg and cfg["serverOutputDir"] or self.serverOutputDir
-                self.outputType = "outputType" in cfg and cfg["outputType"] or self.outputType
+                self.clientOutputType = "clientOutputType" in cfg and cfg["clientOutputType"] or self.clientOutputType
+                self.serverOutputType = "serverOutputType" in cfg and cfg["serverOutputType"] or self.serverOutputType
                 self.isForce = "isForce" in cfg and cfg["isForce"] or self.isForce
                 self.excludeFiles = "excludeFiles" in cfg and cfg["excludeFiles"] or self.excludeFiles
 
@@ -56,12 +58,19 @@ class mainWindow():
         self.serverOutputDir = QFileDialog.getExistingDirectory(None, "选取文件", "./")
         self.serverOutputDirLine.setText(self.serverOutputDir)
 
-    def onOutputTypeClicked(self, box):
-        self.allTypeBox.setChecked(False)
-        self.jsonTypeBox.setChecked(False)
-        self.luaTypeBox.setChecked(False)
+    def onClientOutputTypeClicked(self, box):
+        self.clientAllTypeBox.setChecked(False)
+        self.clientJsonTypeBox.setChecked(False)
+        self.clientLuaTypeBox.setChecked(False)
         box.setChecked(True)
-        self.outputType = box.text()
+        self.clientOutputType = box.text()
+
+    def onServerOutputTypeClicked(self, box):
+        self.serverAllTypeBox.setChecked(False)
+        self.serverJsonTypeBox.setChecked(False)
+        self.serverLuaTypeBox.setChecked(False)
+        box.setChecked(True)
+        self.serverOutputType = box.text()
 
     def onForceClicked(self, box):
         self.forceFalseBox.setChecked(False)
@@ -75,11 +84,15 @@ class mainWindow():
 
         args = argparse.Namespace()
         args.input_dir = self.inputDir
-        args.client_output_dir = self.clientOutputDir
-        args.server_output_dir = self.serverOutputDir
-        args.type = self.outputType
-        args.force = self.isForce
         args.exclude_files = self.excludeFiles
+        args.force = self.isForce
+
+        args.client_type = self.clientOutputType
+        args.client_output_dir = self.clientOutputDir
+
+        args.server_type = self.serverOutputType
+        args.server_output_dir = self.serverOutputDir
+
         self.progressText.clear()
         self.converter = Converter(args, self.logger)
         self.converter.convertAll()
@@ -113,9 +126,31 @@ class mainWindow():
         excludeFilesLayout.addWidget(self.excludeFilesLine, stretch=9)
         #excludeFilesLayout.addStretch(1)
 
+        #======================client==================
+        clientOutputGroupBox = QGroupBox("client")
+        clientOutputGroupBox.setFlat(False)
+        self.clientAllTypeBox = QCheckBox("all")
+        self.clientAllTypeBox.setChecked(self.clientOutputType == "all")
+        self.clientAllTypeBox.clicked.connect(lambda:self.onClientOutputTypeClicked(self.clientAllTypeBox))
+        self.clientJsonTypeBox = QCheckBox("json")
+        self.clientJsonTypeBox.setChecked(self.clientOutputType == "json")
+        self.clientJsonTypeBox.clicked.connect(lambda:self.onClientOutputTypeClicked(self.clientJsonTypeBox))
+        self.clientLuaTypeBox = QCheckBox("lua")
+        self.clientLuaTypeBox.setChecked(self.clientOutputType == "lua")
+        self.clientLuaTypeBox.clicked.connect(lambda:self.onClientOutputTypeClicked(self.clientLuaTypeBox))
+        clientTypeLabel = QLabel(widget)
+        clientTypeLabel.setText("导出类型：")
+        clientTypeLabel.setAlignment(Qt.AlignCenter)
+        clientOutputTypeLayout = QHBoxLayout()
+        clientOutputTypeLayout.addWidget(clientTypeLabel, stretch=1)
+        clientOutputTypeLayout.addWidget(self.clientAllTypeBox, stretch=1)
+        clientOutputTypeLayout.addWidget(self.clientJsonTypeBox, stretch=1)
+        clientOutputTypeLayout.addWidget(self.clientLuaTypeBox, stretch=1)
+        clientOutputTypeLayout.addStretch(6)
+
         clientOutputDirLayout = QHBoxLayout()
         clientOutputDirLabel = QLabel(widget)
-        clientOutputDirLabel.setText("client输出目录：")
+        clientOutputDirLabel.setText("输出目录：")
         clientOutputDirLabel.setAlignment(Qt.AlignCenter)
         self.clientOutputDirLine = QLineEdit(widget)
         self.clientOutputDirLine.setText(self.clientOutputDir)
@@ -125,9 +160,37 @@ class mainWindow():
         clientOutputDirLayout.addWidget(self.clientOutputDirLine, stretch=8)
         clientOutputDirLayout.addWidget(clientOutputDirButton, stretch=1)
 
+        clientLayout = QVBoxLayout()
+        clientLayout.addLayout(clientOutputTypeLayout)
+        clientLayout.addLayout(clientOutputDirLayout)
+        clientOutputGroupBox.setLayout(clientLayout)
+        #======================end client==================
+
+        #======================server==================
+        serverOutputGroupBox = QGroupBox("server")
+        serverOutputGroupBox.setFlat(False)
+        self.serverAllTypeBox = QCheckBox("all")
+        self.serverAllTypeBox.setChecked(self.clientOutputType == "all")
+        self.serverAllTypeBox.clicked.connect(lambda:self.onServerOutputTypeClicked(self.serverAllTypeBox))
+        self.serverJsonTypeBox = QCheckBox("json")
+        self.serverJsonTypeBox.setChecked(self.clientOutputType == "json")
+        self.serverJsonTypeBox.clicked.connect(lambda:self.onServerOutputTypeClicked(self.serverJsonTypeBox))
+        self.serverLuaTypeBox = QCheckBox("lua")
+        self.serverLuaTypeBox.setChecked(self.clientOutputType == "lua")
+        self.serverLuaTypeBox.clicked.connect(lambda:self.onServerOutputTypeClicked(self.serverLuaTypeBox))
+        serverTypeLabel = QLabel(widget)
+        serverTypeLabel.setText("导出类型：")
+        serverTypeLabel.setAlignment(Qt.AlignCenter)
+        serverOutputTypeLayout = QHBoxLayout()
+        serverOutputTypeLayout.addWidget(serverTypeLabel, stretch=1)
+        serverOutputTypeLayout.addWidget(self.serverAllTypeBox, stretch=1)
+        serverOutputTypeLayout.addWidget(self.serverJsonTypeBox, stretch=1)
+        serverOutputTypeLayout.addWidget(self.serverLuaTypeBox, stretch=1)
+        serverOutputTypeLayout.addStretch(6)
+
         serverOutputDirLayout = QHBoxLayout()
         serverOutputDirLabel = QLabel(widget)
-        serverOutputDirLabel.setText("server输出目录：")
+        serverOutputDirLabel.setText("输出目录：")
         serverOutputDirLabel.setAlignment(Qt.AlignCenter)
         self.serverOutputDirLine = QLineEdit(widget)
         self.serverOutputDirLine.setText(self.serverOutputDir)
@@ -137,22 +200,11 @@ class mainWindow():
         serverOutputDirLayout.addWidget(self.serverOutputDirLine, stretch=8)
         serverOutputDirLayout.addWidget(serverOutputDirButton, stretch=1)
 
-        outputGroupBox = QGroupBox("导出类型")
-        outputGroupBox.setFlat(False)
-        self.allTypeBox = QCheckBox("all")
-        self.allTypeBox.setChecked(self.outputType == "all")
-        self.allTypeBox.clicked.connect(lambda:self.onOutputTypeClicked(self.allTypeBox))
-        self.jsonTypeBox = QCheckBox("json")
-        self.jsonTypeBox.setChecked(self.outputType == "json")
-        self.jsonTypeBox.clicked.connect(lambda:self.onOutputTypeClicked(self.jsonTypeBox))
-        self.luaTypeBox = QCheckBox("lua")
-        self.luaTypeBox.setChecked(self.outputType == "lua")
-        self.luaTypeBox.clicked.connect(lambda:self.onOutputTypeClicked(self.luaTypeBox))
-        outputTypeLayout = QHBoxLayout()
-        outputTypeLayout.addWidget(self.allTypeBox)
-        outputTypeLayout.addWidget(self.jsonTypeBox)
-        outputTypeLayout.addWidget(self.luaTypeBox)
-        outputGroupBox.setLayout(outputTypeLayout)
+        serverLayout = QVBoxLayout()
+        serverLayout.addLayout(serverOutputTypeLayout)
+        serverLayout.addLayout(serverOutputDirLayout)
+        serverOutputGroupBox.setLayout(serverLayout)
+        #======================end server==================
 
         forceGroupBox = QGroupBox("是否强制导出所有表格")
         forceGroupBox.setFlat(False)
@@ -182,9 +234,8 @@ class mainWindow():
         mainLayout = QVBoxLayout()
         mainLayout.addLayout(inputDirLayout)
         mainLayout.addLayout(excludeFilesLayout)
-        mainLayout.addLayout(clientOutputDirLayout)
-        mainLayout.addLayout(serverOutputDirLayout)
-        mainLayout.addWidget(outputGroupBox)
+        mainLayout.addWidget(clientOutputGroupBox)
+        mainLayout.addWidget(serverOutputGroupBox)
         mainLayout.addWidget(forceGroupBox)
         mainLayout.addWidget(self.progressText, stretch=50)
         mainLayout.addLayout(doLayout, stretch=1)

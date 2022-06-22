@@ -29,6 +29,7 @@ class Logger():
 datemode = 0 # 时间戳模式 0: 1900-based, 1: 1904-based
 BOOL_YES = ["yes", "1", "是"]
 BOOL_NO = ["", "nil", "0", "false", "no", "none", "否", "无"]
+EXPORT_TYPES = ["lua", "json"]
 
 class Converter:
     _config = {} # 输入配置
@@ -37,8 +38,13 @@ class Converter:
     _logger = None
     def __init__(self, config, logger):
         self._logger = logger
-        assert(config.type == "all" or config.type == "lua" or config.type == "json")
-        assert((not config.client_output_dir is None) or (not config.server_output_dir is None))
+        assert(config.client_type is None or config.client_type == "all" or config.client_type in EXPORT_TYPES)
+        assert(config.server_type is None or config.server_type == "all" or config.server_type in EXPORT_TYPES)
+        if not config.client_type is None:
+            assert(not config.client_output_dir is None)
+        if not config.server_type is None:
+            assert((not config.server_output_dir is None))
+
         self._config = config
 
     def _toLua(self, data, level=1):
@@ -73,7 +79,6 @@ class Converter:
         if ftype == "all" or ftype == "lua":
             luaTable = self._toLua(data)
             code = "local data = %s\n\nreturn data" % (luaTable)
-            print(code)
             ast.parse(code)
             filepath = os.path.join(output_dir, "{}.lua".format(filename))
             self.saveFile(filepath, code)
@@ -145,10 +150,10 @@ class Converter:
             client, server = self._convertSheet(sheet)
             #self._logger.info(json.dumps(client, indent=4))
             #self._logger.info(json.dumps(server, indent=4))
-            if not self._config.client_output_dir is None:
-                self.saveData(self._config.client_output_dir, sheet.name, self._config.type, client)
-            if not self._config.server_output_dir is None:
-                self.saveData(self._config.server_output_dir, sheet.name, self._config.type, server)
+            if not self._config.client_type is None:
+                self.saveData(self._config.client_output_dir, sheet.name, self._config.client_type, client)
+            if not self._config.server_type is None:
+                self.saveData(self._config.server_output_dir, sheet.name, self._config.server_type, server)
 
     def _convertSheet(self, sheet):
         nrows = sheet.nrows
@@ -442,12 +447,13 @@ class Converter:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser("excel to lua converter")
-    parser.add_argument("-i", dest="input_dir", help="excel表文件目录", default="../xls")
-    parser.add_argument("-c", dest="client_output_dir", help="client输出目录", default=None)
-    parser.add_argument("-s", dest="server_output_dir", help="server输出目录", default="../output/client")
-    parser.add_argument("-t", dest="type", metavar='lua|json|all', help="导出类型(默认为导出为lua文件)", default="lua")
-    parser.add_argument("-f", dest="force", help="强制导出所有表格", action="store_true")
-    parser.add_argument("-e", dest="exclude_files", help="排除文件", type=str, nargs="+", default=[])
+    parser.add_argument("--input_dir", dest="input_dir", help="excel表文件目录", default="../xls")
+    parser.add_argument("--client_type", dest="client_type", metavar='|'.join(["all"]+EXPORT_TYPES), help="客户端导出类型(默认为导出为lua文件)", default="lua")
+    parser.add_argument("--client_output_dir", dest="client_output_dir", help="client输出目录", default="../output/client")
+    parser.add_argument("--server_type", dest="server_type", metavar='|'.join(["all"]+EXPORT_TYPES), help="服务端导出类型(默认为导出为lua文件)", default="lua")
+    parser.add_argument("--server_output_dir", dest="server_output_dir", help="server输出目录", default="../output/server")
+    parser.add_argument("--force", dest="force", help="强制导出所有表格", action="store_true")
+    parser.add_argument("--exclude_files", dest="exclude_files", help="排除文件", type=str, nargs="+", default=[])
     args = parser.parse_args()
     converter = Converter(args, Logger())
     converter.convertAll()
