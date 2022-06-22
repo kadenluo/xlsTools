@@ -17,14 +17,14 @@ class Logger():
     def __init__(self):
         pass
 
-    def debug(self, msg):
-        print("[DEBUG] {}".format(msg))
+    def debug(self, pattern, *args):
+        print("[DEBUG] {}".format(pattern.format(*args)))
 
-    def info(self, msg):
-        print("[INFO] {}".format(msg))
+    def info(self, pattern, *args):
+        print("[INFO] {}".format(pattern.format(*args)))
 
-    def error(self, msg):
-        print("[ERROR] {}".format(msg))
+    def error(self, pattern, *args):
+        print("[ERROR] {}".format(pattern.format(*args)))
 
 datemode = 0 # 时间戳模式 0: 1900-based, 1: 1904-based
 BOOL_YES = ["yes", "1", "是"]
@@ -108,11 +108,15 @@ class Converter:
 
                 isInvalid = True
                 for pattern in self._config.exclude_files:
-                    if re.match(pattern, filename):
+                    if len(pattern)>0 and re.match(pattern, filename):
                         isInvalid = False
                         break
 
-                if isInvalid and ((filename not in history) or (history[filename] != mtime)):
+                if not isInvalid:
+                    self._logger.info("convert {} but is excluded.", filename)
+                    continue
+
+                if ((filename not in history) or (history[filename] != mtime)):
                     self.convertFile(filename)
                     history[filename] = mtime
                     with open(self._cachefile, "w") as f:
@@ -136,7 +140,7 @@ class Converter:
         filepath = os.path.join(self._config.input_dir, filename)
         wb = xlrd.open_workbook(filepath)
         for sheet in wb.sheets():
-            self._logger.info("convert {}({})...".format(filename, sheet.name))
+            self._logger.info("convert {}({})...", filename, sheet.name)
             client, server = self._convertSheet(sheet)
             #self._logger.info(json.dumps(client, indent=4))
             #self._logger.info(json.dumps(server, indent=4))
@@ -422,6 +426,5 @@ if __name__ == "__main__":
     parser.add_argument("-f", dest="force", help="强制导出所有表格", action="store_true")
     parser.add_argument("-e", dest="exclude_files", help="排除文件", type=str, nargs="+", default=[])
     args = parser.parse_args()
-    print(args)
     converter = Converter(args, Logger())
     converter.convertAll()

@@ -17,11 +17,11 @@ class UILogger(Logger):
         super().__init__()
         self.box = box
 
-    def info(self, msg):
-        self.box.append("{} [INFO] {}".format(datetime.now().strftime('%Y-%m-%d %H:%M:%S'), msg))
+    def info(self, pattern, *args):
+        self.box.append("{} [INFO] {}".format(datetime.now().strftime('%Y-%m-%d %H:%M:%S'), pattern.format(*args)))
 
-    def error(self, msg):
-        self.box.append("{} [ERROR] {}".format(datetime.now().strftime('%Y-%m-%d %H:%M:%S'), msg))
+    def error(self, pattern, *args):
+        self.box.append("{} [ERROR] {}".format(datetime.now().strftime('%Y-%m-%d %H:%M:%S'), pattern.format(*args)))
 
 class mainWindow():
     def __init__(self, cfgfile):
@@ -88,54 +88,54 @@ class mainWindow():
         app = QApplication(sys.argv)
 
         widget = QWidget()
-        widget.resize(680, 430)
+        widget.resize(960, 720)
         widget.setWindowTitle("转表工具")
 
         inputDirLayout = QHBoxLayout()
         inputDirLabel = QLabel(widget)
-        inputDirLabel.setText("excel目录:")
+        inputDirLabel.setText("excel目录：")
         inputDirLabel.setAlignment(Qt.AlignCenter)
         self.inputDirLine = QLineEdit(widget)
         self.inputDirLine.setText(self.inputDir)
         inputDirButton = QPushButton("打开文件夹")
         inputDirButton.clicked.connect(self.onInputDialogClicked)
-        inputDirLayout.addWidget(inputDirLabel)
-        inputDirLayout.addWidget(self.inputDirLine)
-        inputDirLayout.addWidget(inputDirButton)
+        inputDirLayout.addWidget(inputDirLabel, stretch=1)
+        inputDirLayout.addWidget(self.inputDirLine, stretch=8)
+        inputDirLayout.addWidget(inputDirButton, stretch=1)
 
         excludeFilesLayout = QHBoxLayout()
         excludeFilesLabel = QLabel(widget)
-        excludeFilesLabel.setText("排除文件:")
+        excludeFilesLabel.setText("排除文件：")
         excludeFilesLabel.setAlignment(Qt.AlignCenter)
         self.excludeFilesLine = QLineEdit(widget)
         self.excludeFilesLine.setText(",".join(self.excludeFiles))
-        excludeFilesLayout.addWidget(excludeFilesLabel)
-        excludeFilesLayout.addWidget(self.excludeFilesLine)
+        excludeFilesLayout.addWidget(excludeFilesLabel, stretch=1)
+        excludeFilesLayout.addWidget(self.excludeFilesLine, stretch=9)
+        #excludeFilesLayout.addStretch(1)
 
-        inputDirLayout.addWidget(inputDirButton)
         clientOutputDirLayout = QHBoxLayout()
         clientOutputDirLabel = QLabel(widget)
-        clientOutputDirLabel.setText("client输出目录:")
+        clientOutputDirLabel.setText("client输出目录：")
         clientOutputDirLabel.setAlignment(Qt.AlignCenter)
         self.clientOutputDirLine = QLineEdit(widget)
         self.clientOutputDirLine.setText(self.clientOutputDir)
         clientOutputDirButton = QPushButton("打开文件夹")
         clientOutputDirButton.clicked.connect(self.onClientOutputDialogClicked)
-        clientOutputDirLayout.addWidget(clientOutputDirLabel)
-        clientOutputDirLayout.addWidget(self.clientOutputDirLine)
-        clientOutputDirLayout.addWidget(clientOutputDirButton)
+        clientOutputDirLayout.addWidget(clientOutputDirLabel, stretch=1)
+        clientOutputDirLayout.addWidget(self.clientOutputDirLine, stretch=8)
+        clientOutputDirLayout.addWidget(clientOutputDirButton, stretch=1)
 
         serverOutputDirLayout = QHBoxLayout()
         serverOutputDirLabel = QLabel(widget)
-        serverOutputDirLabel.setText("server输出目录:")
+        serverOutputDirLabel.setText("server输出目录：")
         serverOutputDirLabel.setAlignment(Qt.AlignCenter)
         self.serverOutputDirLine = QLineEdit(widget)
         self.serverOutputDirLine.setText(self.serverOutputDir)
         serverOutputDirButton = QPushButton("打开文件夹")
         serverOutputDirButton.clicked.connect(self.onServerOutputDialogClicked)
-        serverOutputDirLayout.addWidget(serverOutputDirLabel)
-        serverOutputDirLayout.addWidget(self.serverOutputDirLine)
-        serverOutputDirLayout.addWidget(serverOutputDirButton)
+        serverOutputDirLayout.addWidget(serverOutputDirLabel, stretch=1)
+        serverOutputDirLayout.addWidget(self.serverOutputDirLine, stretch=8)
+        serverOutputDirLayout.addWidget(serverOutputDirButton, stretch=1)
 
         outputGroupBox = QGroupBox("输出类型")
         outputGroupBox.setFlat(False)
@@ -172,12 +172,12 @@ class mainWindow():
         self.logger = UILogger(self.progressText)
 
         doLayout = QHBoxLayout()
-        doButton = QPushButton("执行")
+        doButton = QPushButton("开始")
         doButton.clicked.connect(self.do)
-        doButton.setStyleSheet("background-color:rgb(0, 105, 205)");
-        doLayout.addStretch()
-        doLayout.addWidget(doButton)
-        doLayout.addStretch()
+        doButton.setStyleSheet("background-color:rgb(14, 137, 205);color:white;border-radius:8px;font-family:Microsoft Yahei;font-size:20pt");
+        doLayout.addStretch(4)
+        doLayout.addWidget(doButton, stretch=2)
+        doLayout.addStretch(4)
 
         mainLayout = QVBoxLayout()
         mainLayout.addLayout(inputDirLayout)
@@ -186,9 +186,9 @@ class mainWindow():
         mainLayout.addLayout(serverOutputDirLayout)
         mainLayout.addWidget(outputGroupBox)
         mainLayout.addWidget(forceGroupBox)
-        mainLayout.addWidget(self.progressText)
-        mainLayout.addWidget(doButton)
-        mainLayout.addStretch()
+        mainLayout.addWidget(self.progressText, stretch=50)
+        mainLayout.addLayout(doLayout, stretch=1)
+        mainLayout.addStretch(1)
         widget.setLayout(mainLayout)
 
         widget.show()

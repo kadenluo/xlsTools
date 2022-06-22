@@ -28,19 +28,20 @@ xlsTools 用于将策划配置的excel表格转换成lua或json文件，支持xl
 配置好excel表格之后，启动根目录下的xlsToolsGUI.exe工具，启动界面如下：
 ![gui](/doc/images/gui.png)
 在linux端，可能没有GUI，此时可以直接调用转表脚本（./scripts/xlsTools.py）进行转表，使用如下：
+
 ```shell
 # ./xlsTools.py -h
-usage: excel to lua converter [-h] [-i INPUT_DIR] [-o OUTPUT_DIR] [-f] [-t TYPE]
+usage: excel to lua converter [-h] [-i INPUT_DIR] [-c CLIENT_OUTPUT_DIR] [-s SERVER_OUTPUT_DIR] [-t lua|json|all] [-f] [-e EXCLUDE_FILES [EXCLUDE_FILES ...]]
 
 options:
   -h, --help            show this help message and exit
-  -i INPUT_DIR, --input_dir INPUT_DIR
-                        excel表文件目录（默认为../xls）
-  -o OUTPUT_DIR, --output_dir OUTPUT_DIR
-                        输出目录（默认为../output)
-  -t TYPE, --type TYPE  导出类型（lua|json|all）,默认为lua
-  -f, --force           强制导出所有表格
-  -e TYPE, --export TYPE 表格类型（server|client），默认为server，表示导出的表格为server端使用的表
+  -i INPUT_DIR          excel表文件目录
+  -c CLIENT_OUTPUT_DIR  client输出目录
+  -s SERVER_OUTPUT_DIR  server输出目录
+  -t lua|json|all       导出类型(默认为导出为lua文件)
+  -f                    强制导出所有表格
+  -e EXCLUDE_FILES [EXCLUDE_FILES ...]
+                        排除文件(正则匹配)
 ```
 ## 输出文件
 ### lua
@@ -112,7 +113,7 @@ return {
     "1000": {
         "id": 1000,
         "type": 1,
-        "name": "\u6740\u6b7b10\u4e2a\u91ce\u602a",
+        "name": "杀死10个野怪",
         "start_time": 1577874030,
         "end_time": 1609459200,
         "conds": [
@@ -141,7 +142,7 @@ return {
     "1001": {
         "id": 1001,
         "type": 2,
-        "name": "\u7d2f\u8ba1\u5b58\u6d3b50\u5206\u949f",
+        "name": "累计存活50分钟",
         "start_time": 1577874030,
         "end_time": 1577836800,
         "conds": [
