@@ -27,17 +27,19 @@ class mainWindow():
     def __init__(self, cfgfile):
         self.isForce = False
         self.inputDir = "./xls"
-        self.outputDir = "./output"
-        self.exportType = "server"
+        self.clientOutputDir = "./output/client"
+        self.serverOutputDir = "./output/server"
         self.outputType = "lua"
+        self.excludeFiles = []
         if os.path.exists(cfgfile):
-            with open(cfgfile) as f:
+            with open(cfgfile, 'r') as f:
                 cfg = json.load(f)
-                self.inputDir = cfg["inputDir"]
-                self.outputDir = cfg["outputDir"]
-                self.exportType = cfg["exportType"]
-                self.outputType = cfg["outputType"]
-                self.isForce = cfg["isForce"]
+                self.inputDir = "inputDir" in cfg and cfg["inputDir"] or self.inputDir
+                self.clientOutputDir = "clientOutputDir" in cfg and cfg["clientOutputDir"] or self.clientOutputDir
+                self.serverOutputDir = "serverOutputDir" in cfg and cfg["serverOutputDir"] or self.serverOutputDir
+                self.outputType = "outputType" in cfg and cfg["outputType"] or self.outputType
+                self.isForce = "isForce" in cfg and cfg["isForce"] or self.isForce
+                self.excludeFiles = "excludeFiles" in cfg and cfg["excludeFiles"] or self.excludeFiles
 
     def __str__(self):
         return json.dumps(self.__dict__)
@@ -46,9 +48,13 @@ class mainWindow():
         self.inputDir = QFileDialog.getExistingDirectory(None, "选取文件", "./")
         self.inputDirLine.setText(self.inputDir)
 
-    def onOutputDialogClicked(self):
-        self.outputDir = QFileDialog.getExistingDirectory(None, "选取文件", "./")
-        self.outputDirLine.setText(self.outputDir)
+    def onClientOutputDialogClicked(self):
+        self.clientOutputDir = QFileDialog.getExistingDirectory(None, "选取文件", "./")
+        self.clientOutputDirLine.setText(self.clientOutputDir)
+
+    def onServerOutputDialogClicked(self):
+        self.serverOutputDir = QFileDialog.getExistingDirectory(None, "选取文件", "./")
+        self.serverOutputDirLine.setText(self.serverOutputDir)
 
     def onOutputTypeClicked(self, box):
         self.allTypeBox.setChecked(False)
@@ -57,12 +63,6 @@ class mainWindow():
         box.setChecked(True)
         self.outputType = box.text()
 
-    def onExportTypeClicked(self, box):
-        self.clientTypeBox.setChecked(False)
-        self.serverTypeBox.setChecked(False)
-        box.setChecked(True)
-        self.exportType = box.text()
-
     def onForceClicked(self, box):
         self.forceFalseBox.setChecked(False)
         self.forceTrueBox.setChecked(False)
@@ -70,12 +70,16 @@ class mainWindow():
         self.isForce = box.text() == "是"
 
     def do(self):
+        files = self.excludeFilesLine.text()
+        self.excludeFiles = files.split(",")
+
         args = argparse.Namespace()
         args.input_dir = self.inputDir
-        args.output_dir = self.outputDir
+        args.client_output_dir = self.clientOutputDir
+        args.server_output_dir = self.serverOutputDir
         args.type = self.outputType
         args.force = self.isForce
-        args.export = self.exportType
+        args.exclude_files = self.excludeFiles
         self.progressText.clear()
         self.converter = Converter(args, self.logger)
         self.converter.convertAll()
@@ -93,38 +97,45 @@ class mainWindow():
         inputDirLabel.setAlignment(Qt.AlignCenter)
         self.inputDirLine = QLineEdit(widget)
         self.inputDirLine.setText(self.inputDir)
-        #self.inputDirLine.setFocusPolicy(Qt.NoFocus)
         inputDirButton = QPushButton("打开文件夹")
         inputDirButton.clicked.connect(self.onInputDialogClicked)
         inputDirLayout.addWidget(inputDirLabel)
         inputDirLayout.addWidget(self.inputDirLine)
         inputDirLayout.addWidget(inputDirButton)
 
-        outputDirLayout = QHBoxLayout()
-        outputDirLabel = QLabel(widget)
-        outputDirLabel.setText("输出目录:")
-        outputDirLabel.setAlignment(Qt.AlignCenter)
-        self.outputDirLine = QLineEdit(widget)
-        self.outputDirLine.setText(self.outputDir)
-        #self.outputDirLine.setFocusPolicy(Qt.NoFocus)
-        outputDirButton = QPushButton("打开文件夹")
-        outputDirButton.clicked.connect(self.onOutputDialogClicked)
-        outputDirLayout.addWidget(outputDirLabel)
-        outputDirLayout.addWidget(self.outputDirLine)
-        outputDirLayout.addWidget(outputDirButton)
+        excludeFilesLayout = QHBoxLayout()
+        excludeFilesLabel = QLabel(widget)
+        excludeFilesLabel.setText("排除文件:")
+        excludeFilesLabel.setAlignment(Qt.AlignCenter)
+        self.excludeFilesLine = QLineEdit(widget)
+        self.excludeFilesLine.setText(",".join(self.excludeFiles))
+        excludeFilesLayout.addWidget(excludeFilesLabel)
+        excludeFilesLayout.addWidget(self.excludeFilesLine)
 
-        exportGroupBox = QGroupBox("表格类型")
-        exportGroupBox.setFlat(False)
-        self.clientTypeBox = QCheckBox("client")
-        self.clientTypeBox.setChecked(self.exportType == "client")
-        self.clientTypeBox.clicked.connect(lambda:self.onExportTypeClicked(self.clientTypeBox))
-        self.serverTypeBox = QCheckBox("server")
-        self.serverTypeBox.setChecked(self.exportType == "server")
-        self.serverTypeBox.clicked.connect(lambda:self.onExportTypeClicked(self.serverTypeBox))
-        exportTypeLayout = QHBoxLayout()
-        exportTypeLayout.addWidget(self.clientTypeBox)
-        exportTypeLayout.addWidget(self.serverTypeBox)
-        exportGroupBox.setLayout(exportTypeLayout)
+        inputDirLayout.addWidget(inputDirButton)
+        clientOutputDirLayout = QHBoxLayout()
+        clientOutputDirLabel = QLabel(widget)
+        clientOutputDirLabel.setText("client输出目录:")
+        clientOutputDirLabel.setAlignment(Qt.AlignCenter)
+        self.clientOutputDirLine = QLineEdit(widget)
+        self.clientOutputDirLine.setText(self.clientOutputDir)
+        clientOutputDirButton = QPushButton("打开文件夹")
+        clientOutputDirButton.clicked.connect(self.onClientOutputDialogClicked)
+        clientOutputDirLayout.addWidget(clientOutputDirLabel)
+        clientOutputDirLayout.addWidget(self.clientOutputDirLine)
+        clientOutputDirLayout.addWidget(clientOutputDirButton)
+
+        serverOutputDirLayout = QHBoxLayout()
+        serverOutputDirLabel = QLabel(widget)
+        serverOutputDirLabel.setText("server输出目录:")
+        serverOutputDirLabel.setAlignment(Qt.AlignCenter)
+        self.serverOutputDirLine = QLineEdit(widget)
+        self.serverOutputDirLine.setText(self.serverOutputDir)
+        serverOutputDirButton = QPushButton("打开文件夹")
+        serverOutputDirButton.clicked.connect(self.onServerOutputDialogClicked)
+        serverOutputDirLayout.addWidget(serverOutputDirLabel)
+        serverOutputDirLayout.addWidget(self.serverOutputDirLine)
+        serverOutputDirLayout.addWidget(serverOutputDirButton)
 
         outputGroupBox = QGroupBox("输出类型")
         outputGroupBox.setFlat(False)
@@ -170,8 +181,9 @@ class mainWindow():
 
         mainLayout = QVBoxLayout()
         mainLayout.addLayout(inputDirLayout)
-        mainLayout.addLayout(outputDirLayout)
-        mainLayout.addWidget(exportGroupBox)
+        mainLayout.addLayout(excludeFilesLayout)
+        mainLayout.addLayout(clientOutputDirLayout)
+        mainLayout.addLayout(serverOutputDirLayout)
         mainLayout.addWidget(outputGroupBox)
         mainLayout.addWidget(forceGroupBox)
         mainLayout.addWidget(self.progressText)

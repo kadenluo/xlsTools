@@ -38,7 +38,7 @@ class Converter:
     def __init__(self, config, logger):
         self._logger = logger
         assert(config.type == "all" or config.type == "lua" or config.type == "json")
-        assert(config.export == "server" or config.export == "client")
+        assert((not config.client_output_dir is None) or (not config.server_output_dir is None))
         self._config = config
 
     def _toLua(self, data, level=1):
@@ -69,11 +69,23 @@ class Converter:
             return str(data)
         return ", \n".join(lines)
 
-    def save(self, output_type, filename, data):
-        out_dir = self._config.output_dir
+    def saveData(self, output_dir, filename, ftype, data):
+        if ftype == "all" or ftype == "lua":
+            luaTable = self._toLua(data)
+            code = "local data = %s\n\nreturn data" % (luaTable)
+            ast.parse(code)
+            filepath = os.path.join(output_dir, "{}.lua".format(filename))
+            self.saveFile(filepath, code)
+
+        if ftype == "all" or ftype == "json":
+            code = json.dumps(data, indent=4, ensure_ascii=False)
+            filepath = os.path.join(output_dir, "{}.json".format(filename))
+            self.saveFile(filepath, code)
+
+    def saveFile(self, filepath, data):
+        out_dir = os.path.dirname(filepath)
         if not os.path.exists(out_dir):
             os.makedirs(out_dir, mode=0o755)
-        filepath = os.path.join(out_dir, "{}.{}".format(filename, output_type))
         with open(filepath, 'wb') as f:
             f.write(data.encode('utf-8'))
 
@@ -94,7 +106,13 @@ class Converter:
                 mtime = os.stat(filepath).st_mtime
                 allfiles[filename] = mtime
 
-                if (filename not in history) or (history[filename] != mtime):
+                isInvalid = True
+                for pattern in self._config.exclude_files:
+                    if re.match(pattern, filename):
+                        isInvalid = False
+                        break
+
+                if isInvalid and ((filename not in history) or (history[filename] != mtime)):
                     self.convertFile(filename)
                     history[filename] = mtime
                     with open(self._cachefile, "w") as f:
@@ -119,12 +137,17 @@ class Converter:
         wb = xlrd.open_workbook(filepath)
         for sheet in wb.sheets():
             self._logger.info("convert {}({})...".format(filename, sheet.name))
-            self._convertSheet(sheet)
+            client, server = self._convertSheet(sheet)
+            #self._logger.info(json.dumps(client, indent=4))
+            #self._logger.info(json.dumps(server, indent=4))
+            if not self._config.client_output_dir is None:
+                self.saveData(self._config.client_output_dir, sheet.name, self._config.type, client)
+            if not self._config.server_output_dir is None:
+                self.saveData(self._config.server_output_dir, sheet.name, self._config.type, server)
 
     def _convertSheet(self, sheet):
         nrows = sheet.nrows
         ncols = sheet.ncols
-        classname = sheet.name
         assert ((nrows > 3) and (ncols > 1))
 
         mainkey = None
@@ -134,63 +157,77 @@ class Converter:
             desc = self._getCellString(sheet.cell(0, col)).strip(' ')
             name = self._getCellString(sheet.cell(1, col)).strip(' ')
             vtype = self._getCellString(sheet.cell(2, col)).strip(' ')
-            export = self._getCellString(sheet.cell(3, col)).strip(' ').lower()
+            etype = self._getCellString(sheet.cell(3, col)).strip(' ').lower()
 
             if len(name) == 0:
                 continue
 
-            assert(export == "all" or export == "" or export == "client" or export == "server")
-            if export == "all" or export == "" or self._config.export == export:
-                pass
-            else:
-                continue
+            if etype == "":
+                etype = "all"
+
+            assert(etype == "all" or etype == "client" or etype == "server")
 
             if name.startswith('*'):
                 name = name.strip('*')
-                assert(mainkey == None)
+                assert(mainkey == None and (etype == "all" or etype == ""))
                 mainkey = name
+
             assert(name not in uniqueFields)
             uniqueFields[name] = True
-            field2index[col] = {"desc":desc, "name":name, "type":vtype, "levels":name.split('#')}
+            field2index[col] = {"desc":desc, "name":name, "type":vtype, "levels":name.split('#'), "etype":etype}
 
         uniqueFields.clear()
         if mainkey is None:
-            result = []
+            clientResult = []
+            serverResult = []
         else:
-            result = {}
+            clientResult = {}
+            serverResult = {}
+
         for row in range(4, nrows):
-            item = {"_meta":{"isdict":True}}
-            fields = {}
+            clientItem = {"_meta":{"isdict":True}}
+            serverItem = {"_meta":{"isdict":True}}
+            clientFields = {}
+            serverFields = {}
             for col in range(ncols):
                 if col not in field2index:
                     continue
                 meta = field2index[col]
                 value = self._getCellValue(sheet.cell(row, col), meta["type"]) 
                 key = meta["name"]
+                etype = meta["etype"]
                 if len(meta["levels"]) == 1:
-                    item[key] = value
+                    if etype == "all" or etype == "client":
+                        clientItem[key] = value
+                    if etype == "all" or etype == "server":
+                        serverItem[key] = value
                 else:
-                    fields[key] = value
-            self._convertRow(item, fields)
-            item = self._fixLevelType(item)
-            if isinstance(result, list):
-                result.append(item)
+                    if etype == "all" or etype == "client":
+                        clientFields[key] = value
+                    if etype == "all" or etype == "server":
+                        serverFields[key] = value
+
+            # client
+            self._convertRow(clientItem, clientFields)
+            clientItem = self._fixLevelType(clientItem)
+            if isinstance(clientResult, list):
+                clientResult.append(clientItem)
             else:
-                k = item[mainkey]
-                del item[mainkey]
-                result[k] = item
+                k = clientItem[mainkey]
+                del clientItem[mainkey]
+                clientResult[k] = clientItem
 
-        #self._logger.info(json.dumps(result, indent=4))
+            # server
+            self._convertRow(serverItem, serverFields)
+            serverItem = self._fixLevelType(serverItem)
+            if isinstance(serverFields, list):
+                serverResult.append(serverItem)
+            else:
+                k = serverItem[mainkey]
+                del serverItem[mainkey]
+                serverResult[k] = serverItem
 
-        if self._config.type == "all" or self._config.type == "lua":
-            luaTable = self._toLua(result)
-            code = "local data = %s\n\nreturn data" % (luaTable)
-            ast.parse(code)
-            self.save("lua", classname, code)
-
-        if self._config.type == "all" or self._config.type == "json":
-            code = json.dumps(result, indent=4)
-            self.save("json", classname, code)
+        return clientResult, serverResult
 
     def _convertRow(self, result, fields):
         if len(fields) == 0 :
@@ -379,10 +416,12 @@ class Converter:
 if __name__ == "__main__":
     parser = argparse.ArgumentParser("excel to lua converter")
     parser.add_argument("-i", dest="input_dir", help="excel表文件目录", default="../xls")
-    parser.add_argument("-o", dest="output_dir", help="输出目录", default="../output")
+    parser.add_argument("-c", dest="client_output_dir", help="client输出目录", default=None)
+    parser.add_argument("-s", dest="server_output_dir", help="server输出目录", default="../output/client")
     parser.add_argument("-t", dest="type", metavar='lua|json|all', help="导出类型(默认为导出为lua文件)", default="lua")
     parser.add_argument("-f", dest="force", help="强制导出所有表格", action="store_true")
-    parser.add_argument("-e", dest="export", metavar="server|client", help="导出表格的类型（服务端导表or客户端导表）", default="server")
+    parser.add_argument("-e", dest="exclude_files", help="排除文件", type=str, nargs="+", default=[])
     args = parser.parse_args()
+    print(args)
     converter = Converter(args, Logger())
     converter.convertAll()

@@ -1,7 +1,8 @@
 {
     "inputDir": "./xls",
-    "outputDir": "./output",
-    "exportType": "server",
-    "outputType": "lua",
-    "isForce": true
+    "clientOutputDir": "./output/client",
+    "serverOutputDir": "./output/server",
+    "outputType": "all",
+    "isForce": false,
+    "excludeFiles":[".svn", ".git"]
 }
