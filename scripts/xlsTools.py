@@ -109,7 +109,7 @@ class Converter:
                     continue
 
                 filepath = os.path.join(self._config.input_dir, filename)
-                mtime = os.stat(filepath).st_mtime
+                mtime = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(os.stat(filepath).st_mtime)) 
                 allfiles[filename] = mtime
 
                 isInvalid = True
@@ -125,8 +125,8 @@ class Converter:
                 if ((filename not in history) or (history[filename] != mtime)):
                     self.convertFile(filename)
                     history[filename] = mtime
-                    with open(self._cachefile, "w") as f:
-                        json.dump(history, f, indent=4)
+                    with open(self._cachefile, "w", encoding='utf-8') as f:
+                        json.dump(history, f, indent=4, ensure_ascii=False)
 
             # 清理cache
             delkeys = []
@@ -135,8 +135,8 @@ class Converter:
                     delkeys.append(filename)
             for k in delkeys:
                 del history[filename]
-            with open(self._cachefile, "w") as f:
-                json.dump(history, f, indent=4)
+            with open(self._cachefile, "w", encoding='utf-8') as f:
+                json.dump(history, f, indent=4, ensure_ascii=False)
 
             self._logger.info("success!!!")
         except Exception as ex:
