@@ -13,6 +13,15 @@ import traceback
 from luaparser import ast
 from operator import itemgetter
 
+datemode = 0 # 时间戳模式 0: 1900-based, 1: 1904-based
+BOOL_YES = ["yes", "1", "是"]
+BOOL_NO = ["", "nil", "0", "false", "no", "none", "否", "无"]
+EXPORT_TYPES = ["lua", "json"]
+
+def myassert(expr, errmsg="Unknown"):
+    if not expr:
+        raise Exception(errmsg)
+
 class Logger():
     def __init__(self):
         pass
@@ -26,11 +35,6 @@ class Logger():
     def error(self, pattern, *args):
         print("[ERROR] {}".format(pattern.format(*args)))
 
-datemode = 0 # 时间戳模式 0: 1900-based, 1: 1904-based
-BOOL_YES = ["yes", "1", "是"]
-BOOL_NO = ["", "nil", "0", "false", "no", "none", "否", "无"]
-EXPORT_TYPES = ["lua", "json"]
-
 class Converter:
     _config = {} # 输入配置
     _indent = "    " #缩进
@@ -38,12 +42,12 @@ class Converter:
     _logger = None
     def __init__(self, config, logger):
         self._logger = logger
-        assert(config.client_type is None or config.client_type == "all" or config.client_type in EXPORT_TYPES)
-        assert(config.server_type is None or config.server_type == "all" or config.server_type in EXPORT_TYPES)
+        myassert(config.client_type is None or config.client_type == "all" or config.client_type in EXPORT_TYPES)
+        myassert(config.server_type is None or config.server_type == "all" or config.server_type in EXPORT_TYPES)
         if not config.client_type is None:
-            assert(not config.client_output_dir is None)
+            myassert(not config.client_output_dir is None)
         if not config.server_type is None:
-            assert((not config.server_output_dir is None))
+            myassert((not config.server_output_dir is None))
 
         self._config = config
 
@@ -100,7 +104,7 @@ class Converter:
             history = {}
             if not self._config.force:
                 if os.path.exists(self._cachefile):
-                    with open(self._cachefile) as f:
+                    with open(self._cachefile, 'r', encoding='utf-8') as f:
                         history = json.load(f)
 
             allfiles = {}
@@ -141,6 +145,7 @@ class Converter:
             self._logger.info("success!!!")
         except Exception as ex:
             self._logger.error(traceback.format_exc())
+            sys.exit(-1)
 
     def convertFile(self, filename):
         filepath = os.path.join(self._config.input_dir, filename)
@@ -158,7 +163,7 @@ class Converter:
     def _convertSheet(self, sheet):
         nrows = sheet.nrows
         ncols = sheet.ncols
-        assert ((nrows > 3) and (ncols > 1))
+        myassert ((nrows > 3) and (ncols > 1), "nrows(%d) or ncols(%d) is invalid." %(nrows, ncols))
 
         mainkey = None
         field2index = {}
@@ -175,14 +180,14 @@ class Converter:
             if etype == "":
                 etype = "all"
 
-            assert(etype == "all" or etype == "client" or etype == "server")
+            myassert(etype == "all" or etype == "client" or etype == "server", "etype is invalid. (etype=%s)"%etype)
 
             if name.startswith('*'):
                 name = name.strip('*')
-                assert(mainkey == None and (etype == "all" or etype == ""))
+                myassert(mainkey == None and (etype == "all" or etype == ""))
                 mainkey = name
 
-            assert(name not in uniqueFields)
+            myassert(name not in uniqueFields, "field is repeated. (name=%s)"%name)
             uniqueFields[name] = True
             field2index[col] = {"desc":desc, "name":name, "type":vtype, "levels":name.split('#'), "etype":etype}
 
@@ -230,6 +235,7 @@ class Converter:
                 else:
                     k = clientItem[mainkey]
                     del clientItem[mainkey]
+                    myassert(not k in clientResult, "primary must not be repeated!(key=%s)"%(str(k)))
                     if len(clientItem) == 1:
                         it = list(clientItem.items())[0]
                         if it[0].startswith('_'):
