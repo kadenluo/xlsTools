@@ -23,6 +23,8 @@ class UILogger(Logger):
     def error(self, pattern, *args):
         self.box.append("{} [ERROR] {}".format(datetime.now().strftime('%Y-%m-%d %H:%M:%S'), pattern.format(*args)))
 
+    def critical(self, pattern, *args):
+        QMessageBox.critical(self.box, "错误", pattern.format(*args), QMessageBox.Yes)
 class mainWindow():
     def __init__(self, cfgfile):
         self.isForce = False

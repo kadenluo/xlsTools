@@ -1,7 +1,5 @@
-@echo off
-
 python scripts/xlsTools.py --input_dir ./xls ^
-    --client_type lua ^
+    --client_type json ^
     --client_output_dir ./output/client ^
     --server_type lua ^
     --server_output_dir ./output/server ^

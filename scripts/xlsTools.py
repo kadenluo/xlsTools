@@ -12,11 +12,22 @@ import argparse
 import traceback
 from luaparser import ast
 from operator import itemgetter
+from enum import Enum
 
 datemode = 0 # 时间戳模式 0: 1900-based, 1: 1904-based
 BOOL_YES = ["yes", "1", "是"]
 BOOL_NO = ["", "nil", "0", "false", "no", "none", "否", "无"]
 EXPORT_TYPES = ["lua", "json"]
+
+class KeyType(Enum):
+    FirstIndex = 1
+    SecondIndex = 2
+    Field = 3
+
+#class ElementType(Enum):
+#    ALL = "all"
+#    CLIENT = "client"
+#    SERVER = "server"
 
 def myassert(expr, errmsg="Unknown"):
     if not expr:
@@ -35,11 +46,15 @@ class Logger():
     def error(self, pattern, *args):
         print("[ERROR] {}".format(pattern.format(*args)))
 
+    def critical(self, pattern, *args):
+        print("[Critial] {}".format(pattern.format(*args)))
+
 class Converter:
     _config = {} # 输入配置
     _indent = "    " #缩进
     _cachefile = "./.cache"
     _logger = None
+    _sheetDict = {}
     def __init__(self, config, logger):
         self._logger = logger
         myassert(config.client_type is None or config.client_type == "all" or config.client_type in EXPORT_TYPES)
@@ -72,7 +87,10 @@ class Converter:
                 items.append("{}{} = {}".format(self._indent*level, key, value))
             lines.append("{\n%s\n%s}"%(", \n".join(items), self._indent*(level-1)))
         elif isinstance(data, str):
-            return '[[%s]]'%(data)
+            if data == "nil":
+                return "nil"
+            else:
+                return '[[%s]]'%(data)
         elif isinstance(data, bool):
             return 'true' if data else 'false'
         else:
@@ -153,21 +171,19 @@ class Converter:
         for sheet in wb.sheets():
             self._logger.info("convert {}({})...", filename, sheet.name)
             client, server = self._convertSheet(sheet)
-            #self._logger.info(json.dumps(client, indent=4))
-            #self._logger.info(json.dumps(server, indent=4))
-            if not self._config.client_type is None:
+            #print(json.dumps(client, indent=4))
+            #print(json.dumps(server, indent=4))
+            if not self._config.client_type is None and len(client) > 0:
                 self.saveData(self._config.client_output_dir, sheet.name, self._config.client_type, client)
-            if not self._config.server_type is None:
+            if not self._config.server_type is None and len(server) > 0:
                 self.saveData(self._config.server_output_dir, sheet.name, self._config.server_type, server)
 
-    def _convertSheet(self, sheet):
+    def _convertHead(self, sheet):
         nrows = sheet.nrows
         ncols = sheet.ncols
-        myassert ((nrows > 3) and (ncols > 1), "nrows(%d) or ncols(%d) is invalid." %(nrows, ncols))
 
-        mainkey = None
-        field2index = {}
-        uniqueFields = {} # 用于校验field重复问题
+        clientDict = {"col2fields":{},"fields":{}, "indexes":{}}
+        serverDict = {"col2fields":{},"fields":{}, "indexes":{}}
         for col in range(ncols):
             desc = self._getCellString(sheet.cell(0, col)).strip(' ')
             name = self._getCellString(sheet.cell(1, col)).strip(' ')
@@ -182,90 +198,131 @@ class Converter:
 
             myassert(etype == "all" or etype == "client" or etype == "server", "etype is invalid. (etype=%s)"%etype)
 
+            keyType = KeyType.Field
+            isIndexCanRepeat = False
             if name.startswith('*'):
+                keyType = KeyType.FirstIndex
+                if name.endswith('*'):
+                    isIndexCanRepeat = True
+                if name.startswith('**'):
+                    keyType = KeyType.SecondIndex
                 name = name.strip('*')
-                myassert(mainkey == None and (etype == "all" or etype == ""))
-                mainkey = name
 
-            myassert(name not in uniqueFields, "field is repeated. (name=%s)"%name)
-            uniqueFields[name] = True
-            field2index[col] = {"desc":desc, "name":name, "type":vtype, "levels":name.split('#'), "etype":etype}
+            field = {"desc":desc, "name":name, "type":vtype, "levels":name.split('#')}
+            if etype == "all" or etype == "client":
+                if keyType == KeyType.FirstIndex or keyType == KeyType.SecondIndex:
+                    clientDict["indexes"][keyType] = {"isCanRepeat":isIndexCanRepeat, "name":name}
+                myassert(name not in clientDict["fields"], "field is repeated. (name=%s)"%name)
+                clientDict["fields"][name] = col
+                clientDict["col2fields"][col] = field
 
-        uniqueFields.clear()
-        if mainkey is None:
-            clientResult = []
-            serverResult = []
-        else:
+            if etype == "all" or etype == "server":
+                if keyType == KeyType.FirstIndex or keyType == KeyType.SecondIndex:
+                    serverDict["indexes"][keyType] = {"isCanRepeat":isIndexCanRepeat, "name":name}
+                myassert(name not in serverDict["fields"], "field is repeated. (name=%s)"%name)
+                serverDict["fields"][name] = col
+                serverDict["col2fields"][col] = field
+
+        #self._sheetDict[sheet.name] = {"client":clientDict, "server":serverDict}
+        return clientDict, serverDict
+
+    def _convertSheet(self, sheet):
+        nrows = sheet.nrows
+        ncols = sheet.ncols
+        myassert ((nrows > 3) and (ncols > 1), "nrows(%d) or ncols(%d) is invalid." %(nrows, ncols))
+        clientDict, serverDict = self._convertHead(sheet)
+
+        if len(clientDict["indexes"]) > 0:
             clientResult = {}
-            serverResult = {}
+        else:
+            clientResult = []
 
+        if len(serverDict["indexes"]) > 0:
+            serverResult = {}
+        else:
+            serverResult = []
+
+        #数据从第4行开始
         for row in range(4, nrows):
-            clientItem = {"_meta":{"isdict":True}}
-            serverItem = {"_meta":{"isdict":True}}
             clientFields = {}
             serverFields = {}
+            clientItem = {"_meta":{"isdict":True}}
+            serverItem = {"_meta":{"isdict":True}}
             for col in range(ncols):
-                if col not in field2index:
+                if sheet.cell(row, col).ctype == xlrd.XL_CELL_EMPTY:
                     continue
-                meta = field2index[col]
-                value = self._getCellValue(sheet.cell(row, col), meta["type"]) 
-                key = meta["name"]
-                #if re.match("\d\.?0?", key):
-                #    key = "[{}]".format(int(float(key))
-                etype = meta["etype"]
-                if len(meta["levels"]) == 1:
-                    if etype == "all" or etype == "client":
+                if col in clientDict["col2fields"]:
+                    meta = clientDict["col2fields"][col]
+                    value = self._getCellValue(sheet.cell(row, col), meta["type"]) 
+                    key = meta["name"]
+                    if len(meta["levels"]) == 1:
                         clientItem[key] = value
-                    if etype == "all" or etype == "server":
-                        serverItem[key] = value
-                else:
-                    if etype == "all" or etype == "client":
+                    else:
                         clientFields[key] = value
-                    if etype == "all" or etype == "server":
+
+                if col in serverDict["col2fields"]:
+                    meta = serverDict["col2fields"][col]
+                    value = self._getCellValue(sheet.cell(row, col), meta["type"]) 
+                    key = meta["name"]
+                    if len(meta["levels"]) == 1:
+                        serverItem[key] = value
+                    else:
                         serverFields[key] = value
 
             # client
-            self._convertRow(clientItem, clientFields)
-            clientItem = self._fixLevelType(clientItem)
-            if isinstance(clientResult, list):
-                clientResult.append(clientItem)
-            else:
-                if mainkey is None:
-                    clientResult.append(clientItem)
-                else:
-                    k = clientItem[mainkey]
-                    del clientItem[mainkey]
-                    myassert(not k in clientResult, "primary must not be repeated!(key=%s)"%(str(k)))
-                    if len(clientItem) == 1:
-                        it = list(clientItem.items())[0]
-                        if it[0].startswith('_'):
-                            clientResult[k] = it[1]
-                        else:
-                            clientResult[k] = clientItem
-                    else:
-                        clientResult[k] = clientItem
+            if len(clientDict["col2fields"]) > 0 :
+                self._genRowData(clientResult, clientDict, clientFields, clientItem)
 
             # server
-            self._convertRow(serverItem, serverFields)
-            serverItem = self._fixLevelType(serverItem)
-            if isinstance(serverFields, list):
-                serverResult.append(serverItem)
-            else:
-                if mainkey is None:
-                    serverResult.append(serverItem)
-                else:
-                    k = serverItem[mainkey]
-                    del serverItem[mainkey]
-                    if len(serverItem) == 1:
-                        it = list(serverItem.items())[0]
-                        if it[0].startswith('_'):
-                            serverResult[k] = it[1]
-                        else:
-                            serverResult[k] = serverItem
-                    else:
-                        serverResult[k] = serverItem
+            if len(serverDict["col2fields"]) > 0:
+                self._genRowData(serverResult, serverDict, serverFields, serverItem)
 
         return clientResult, serverResult
+
+    def _genRowData(self, result, sheetDict, fields, items):
+        self._convertRow(items, fields)
+        items = self._fixLevelType(items)
+        if isinstance(fields, list):
+            result.append(items)
+        else:
+            indexNum = len(sheetDict["indexes"])
+            for idx in range(1, indexNum+1):
+                myassert(KeyType(idx) in sheetDict["indexes"], "缺少%d级索引!"%(idx))
+
+            if indexNum == 1:
+                index = sheetDict["indexes"][KeyType.FirstIndex]
+                k = items[index["name"]]
+                if len(items) == 2:
+                    myassert(not k in result, "primary must not be repeated!(key=%s)"%(str(k)))
+                    del items[index["name"]]
+                    it = list(items.items())[0]
+                    result[k] = it[1]
+                else:
+                    if not index["isCanRepeat"]:
+                        myassert(k not in result, "一级索引重复！key:%s"%(k))
+                        result[k] = items
+                    else:
+                        if k not in result:
+                            result[k] = []
+                        result[k].append(items)
+
+            elif indexNum == 2:
+                firstIndex = sheetDict["indexes"][KeyType.FirstIndex]
+                secondIndex = sheetDict["indexes"][KeyType.SecondIndex]
+                firstIndexName = firstIndex["name"]
+                secondIndexName = secondIndex["name"]
+
+                firstIndexValue = items[firstIndexName] 
+                secondIndexValue = items[secondIndexName] 
+
+                del items[firstIndexName]
+                del items[secondIndexName]
+
+                if firstIndexValue not in result:
+                    result[firstIndexValue] = {}
+
+                myassert(secondIndexValue not in result[firstIndexValue], "二级键重复！(subKey=%s), (mainKey=%s)"%(str(secondIndexValue), str(firstIndexValue)))
+                result[firstIndexValue][secondIndexValue] = items
 
     def _convertRow(self, result, fields):
         if len(fields) == 0 :
@@ -313,8 +370,18 @@ class Converter:
             pass
         else:
             tmp = []
-            for k in sorted(item.keys()):
-                tmp.append(item[k])
+            bAllNumber = True
+            for k in item.keys():
+                if not str.isdigit(k):
+                    bAllNumber = False
+                    break
+            if bAllNumber:
+                for k in sorted(item.keys(), key=lambda key: int(key)):
+                    tmp.append(item[k])
+            else:
+                for k in sorted(item.keys()):
+                    tmp.append(item[k])
+
             item = tmp
         return item
 
@@ -396,7 +463,10 @@ class Converter:
         elif cell.ctype == xlrd.XL_CELL_TEXT:
             return cell.value
         elif cell.ctype == xlrd.XL_CELL_NUMBER:
-            return str(cell.value)
+            if cell.value % 1 == 0 :
+                return str(int(cell.value))
+            else:
+                return str(cell.value)
         elif cell.ctype == xlrd.XL_CELL_DATE:
             dt = xlrd.xldate.xldate_as_datetime(cell.value, datemode)
             return "%s" % dt
