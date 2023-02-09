@@ -8,8 +8,10 @@ import time
 import datetime
 import xlrd
 import json
+import copy
 import argparse
 import traceback
+import hashlib
 from luaparser import ast
 from operator import itemgetter
 from enum import Enum
@@ -18,6 +20,7 @@ datemode = 0 # 时间戳模式 0: 1900-based, 1: 1904-based
 BOOL_YES = ["yes", "1", "是"]
 BOOL_NO = ["", "nil", "0", "false", "no", "none", "否", "无"]
 EXPORT_TYPES = ["lua", "json"]
+ENUM_FILE = "Enum"
 
 class KeyType(Enum):
     FirstIndex = 1
@@ -32,6 +35,11 @@ class KeyType(Enum):
 def myassert(expr, errmsg="Unknown"):
     if not expr:
         raise Exception(errmsg)
+
+def getFileMD5(filepath):
+    with open(filepath, 'rb') as fp:
+        return hashlib.md5(fp.read()).hexdigest()
+    return None
 
 class Logger():
     def __init__(self):
@@ -50,13 +58,12 @@ class Logger():
         print("[Critial] {}".format(pattern.format(*args)))
 
 class Converter:
-    _config = {} # 输入配置
     _indent = "    " #缩进
     _cachefile = "./.cache"
-    _logger = None
-    _sheetDict = {}
     def __init__(self, config, logger):
+        self._enumDict = {}
         self._logger = logger
+        self._config = config
         myassert(config.client_type is None or config.client_type == "all" or config.client_type in EXPORT_TYPES)
         myassert(config.server_type is None or config.server_type == "all" or config.server_type in EXPORT_TYPES)
         if not config.client_type is None:
@@ -64,7 +71,10 @@ class Converter:
         if not config.server_type is None:
             myassert((not config.server_output_dir is None))
 
-        self._config = config
+    def __del__(self):
+        self._enumDict = {}
+        self._config = None
+        self.logger = None
 
     def _toLua(self, data, level=1):
         lines = []
@@ -117,6 +127,39 @@ class Converter:
         with open(filepath, 'wb') as f:
             f.write(data.encode('utf-8'))
 
+    def convertEnumFile(self, filename):
+        filepath = os.path.join(self._config.input_dir, filename)
+        wb = xlrd.open_workbook(filepath)
+        for sheet in wb.sheets():
+            self._logger.info("convert {}({})...", filename, sheet.name)
+            self.convertEnumSheet(sheet)
+        #print(json.dumps(self._enumDict, indent=4))
+
+    def convertEnumSheet(self, sheet):
+        nrows = sheet.nrows
+        ncols = sheet.ncols
+        #self._logger.info("{}", json.dumps(self._enumDict, indent=4))
+        myassert ((nrows > 3) and (ncols > 2), "nrows(%d) or ncols(%d) is invalid." %(nrows, ncols))
+
+        enumName = ""
+        enumDict = {}
+        for row in range(4, nrows):
+            ename = self._getCellValue(sheet.cell(row, 0), "string") 
+            key = self._getCellValue(sheet.cell(row, 1), "string") 
+            value = self._getCellValue(sheet.cell(row, 3), "int") 
+            myassert(not ename in self._enumDict, "枚举：（%s）重复定义" %(ename))
+            if ename != enumName and len(ename) > 0 :
+                if len(enumName) > 0 :
+                    self._enumDict[enumName] = copy.deepcopy(enumDict)
+                    enumDict = {}
+                enumName = ename
+
+            if len(key) > 0:
+                enumDict[key] = value
+
+        if len(enumDict) > 0 and len(enumName) > 0 :
+            self._enumDict[enumName] = copy.deepcopy(enumDict)
+
     def convertAll(self):
         try:
             history = {}
@@ -127,12 +170,17 @@ class Converter:
 
             allfiles = {}
             for filename in os.listdir(self._config.input_dir):
-                if filename.startswith("~"):
+                if os.path.splitext(filename)[0] == ENUM_FILE:
+                    self.convertEnumFile(filename)
+                    break
+
+            for filename in os.listdir(self._config.input_dir):
+                if filename.startswith("~") or os.path.splitext(filename)[0] == ENUM_FILE:
                     continue
 
                 filepath = os.path.join(self._config.input_dir, filename)
-                mtime = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(os.stat(filepath).st_mtime)) 
-                allfiles[filename] = mtime
+                md5 = getFileMD5(filepath)
+                allfiles[filename] = md5
 
                 isInvalid = True
                 for pattern in self._config.exclude_files:
@@ -144,15 +192,15 @@ class Converter:
                     self._logger.info("convert {} but is excluded.", filename)
                     continue
 
-                if ((filename not in history) or (history[filename] != mtime)):
+                if ((filename not in history) or (history[filename] != md5)):
                     self.convertFile(filename)
-                    history[filename] = mtime
+                    history[filename] = md5
                     with open(self._cachefile, "w", encoding='utf-8') as f:
                         json.dump(history, f, indent=4, ensure_ascii=False)
 
             # 清理cache
             delkeys = []
-            for (filename, mtime) in history.items():
+            for (filename, md5) in history.items():
                 if filename not in allfiles:
                     delkeys.append(filename)
             for k in delkeys:
@@ -163,7 +211,6 @@ class Converter:
             self._logger.info("success!!!")
         except Exception as ex:
             self._logger.error(traceback.format_exc())
-            sys.exit(-1)
 
     def convertFile(self, filename):
         filepath = os.path.join(self._config.input_dir, filename)
@@ -208,6 +255,7 @@ class Converter:
                     keyType = KeyType.SecondIndex
                 name = name.strip('*')
 
+            name = name.strip()
             field = {"desc":desc, "name":name, "type":vtype, "levels":name.split('#')}
             if etype == "all" or etype == "client":
                 if keyType == KeyType.FirstIndex or keyType == KeyType.SecondIndex:
@@ -223,63 +271,54 @@ class Converter:
                 serverDict["fields"][name] = col
                 serverDict["col2fields"][col] = field
 
-        #self._sheetDict[sheet.name] = {"client":clientDict, "server":serverDict}
         return clientDict, serverDict
+
+    # isOptimize - 是否转出k-v形式，当表格只有两列时，如果isOptimize为true，则表示转出结果为k-v形式
+    def _realConvertSheet(self, sheet, sheetDict, isOptimize):
+        if len(sheetDict["indexes"]) > 0:
+            result = {}
+        else:
+            result = []
+
+        #数据从第4行开始
+        for row in range(4, sheet.nrows):
+            flag = True
+            fields = {}
+            items = {"_meta":{"isdict":True}}
+            for col in range(sheet.ncols):
+                if col in sheetDict["col2fields"]:
+                    meta = sheetDict["col2fields"][col]
+                    key = meta["name"]
+                    if sheet.cell(row, col).ctype == xlrd.XL_CELL_EMPTY:
+                        index = sheetDict["indexes"][KeyType.FirstIndex]
+                        if index["name"] == key :
+                            flag = False
+                            break
+                        if key.split('#')[-1].isdigit():
+                            continue
+                    value = self._getCellValue(sheet.cell(row, col), meta["type"]) 
+                    if len(meta["levels"]) == 1:
+                        items[key] = value
+                    else:
+                        fields[key] = value
+
+            if flag and len(sheetDict["col2fields"]) > 0 :
+                self._genRowData(result, sheetDict, fields, items, isOptimize)
+
+        return result
 
     def _convertSheet(self, sheet):
         nrows = sheet.nrows
         ncols = sheet.ncols
         myassert ((nrows > 3) and (ncols > 1), "nrows(%d) or ncols(%d) is invalid." %(nrows, ncols))
+
         clientDict, serverDict = self._convertHead(sheet)
-
-        if len(clientDict["indexes"]) > 0:
-            clientResult = {}
-        else:
-            clientResult = []
-
-        if len(serverDict["indexes"]) > 0:
-            serverResult = {}
-        else:
-            serverResult = []
-
-        #数据从第4行开始
-        for row in range(4, nrows):
-            clientFields = {}
-            serverFields = {}
-            clientItem = {"_meta":{"isdict":True}}
-            serverItem = {"_meta":{"isdict":True}}
-            for col in range(ncols):
-                if sheet.cell(row, col).ctype == xlrd.XL_CELL_EMPTY:
-                    continue
-                if col in clientDict["col2fields"]:
-                    meta = clientDict["col2fields"][col]
-                    value = self._getCellValue(sheet.cell(row, col), meta["type"]) 
-                    key = meta["name"]
-                    if len(meta["levels"]) == 1:
-                        clientItem[key] = value
-                    else:
-                        clientFields[key] = value
-
-                if col in serverDict["col2fields"]:
-                    meta = serverDict["col2fields"][col]
-                    value = self._getCellValue(sheet.cell(row, col), meta["type"]) 
-                    key = meta["name"]
-                    if len(meta["levels"]) == 1:
-                        serverItem[key] = value
-                    else:
-                        serverFields[key] = value
-
-            # client
-            if len(clientDict["col2fields"]) > 0 :
-                self._genRowData(clientResult, clientDict, clientFields, clientItem)
-
-            # server
-            if len(serverDict["col2fields"]) > 0:
-                self._genRowData(serverResult, serverDict, serverFields, serverItem)
+        clientResult = self._realConvertSheet(sheet, clientDict, True)
+        serverResult = self._realConvertSheet(sheet, serverDict, True)
 
         return clientResult, serverResult
 
-    def _genRowData(self, result, sheetDict, fields, items):
+    def _genRowData(self, result, sheetDict, fields, items, flag):
         self._convertRow(items, fields)
         items = self._fixLevelType(items)
         if isinstance(fields, list):
@@ -292,7 +331,7 @@ class Converter:
             if indexNum == 1:
                 index = sheetDict["indexes"][KeyType.FirstIndex]
                 k = items[index["name"]]
-                if len(items) == 2:
+                if flag and len(items) == 2:
                     myassert(not k in result, "primary must not be repeated!(key=%s)"%(str(k)))
                     del items[index["name"]]
                     it = list(items.items())[0]
@@ -402,6 +441,17 @@ class Converter:
             return self._getCellListForBool(cell)
         elif vtype == "list(string)":
             return self._getCellListForString(cell)
+        elif vtype.startswith("enum"):
+            typeList = vtype.split(".")
+            if len(typeList) != 2:
+                raise Exception("The enum type is invalid. %s" % vtype)
+            enumName = typeList[1]
+            if not enumName in self._enumDict:
+                raise Exception("The enum is not found. %s" % vtype)
+            enumKey = self._getCellString(cell)
+            if not enumKey in self._enumDict[enumName]:
+                raise Exception("The enum value is not found in %s. %s" % (vtype, enumKey))
+            return self._enumDict[enumName][enumKey]
         else:
             raise Exception("This type is invalid. %s" % vtype)
 
@@ -461,7 +511,7 @@ class Converter:
         if cell.ctype == xlrd.XL_CELL_EMPTY:
             return ""
         elif cell.ctype == xlrd.XL_CELL_TEXT:
-            return cell.value
+            return cell.value.strip()
         elif cell.ctype == xlrd.XL_CELL_NUMBER:
             if cell.value % 1 == 0 :
                 return str(int(cell.value))
@@ -524,12 +574,12 @@ class Converter:
 if __name__ == "__main__":
     parser = argparse.ArgumentParser("excel to lua converter")
     parser.add_argument("--input_dir", dest="input_dir", help="excel表文件目录", default="../xls")
-    parser.add_argument("--client_type", dest="client_type", metavar='|'.join(["all"]+EXPORT_TYPES), help="客户端导出类型(默认为导出为lua文件)", default="lua")
+    parser.add_argument("--client_type", dest="client_type", metavar='|'.join(["all"]+EXPORT_TYPES), help="客户端导出类型(默认为导出为json文件)", default="json")
     parser.add_argument("--client_output_dir", dest="client_output_dir", help="client输出目录", default="../output/client")
-    parser.add_argument("--server_type", dest="server_type", metavar='|'.join(["all"]+EXPORT_TYPES), help="服务端导出类型(默认为导出为lua文件)", default="lua")
+    parser.add_argument("--server_type", dest="server_type", metavar='|'.join(["all"]+EXPORT_TYPES), help="服务端导出类型(默认为导出为json文件)", default="json")
     parser.add_argument("--server_output_dir", dest="server_output_dir", help="server输出目录", default="../output/server")
     parser.add_argument("--force", dest="force", help="强制导出所有表格", action="store_true")
-    parser.add_argument("--exclude_files", dest="exclude_files", help="排除文件", type=str, nargs="+", default=[])
+    parser.add_argument("--exclude_files", dest="exclude_files", help="排除文件", type=str, nargs="+", default=[".git", ".svn"])
     args = parser.parse_args()
     converter = Converter(args, Logger())
     converter.convertAll()

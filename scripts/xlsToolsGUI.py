@@ -96,8 +96,9 @@ class mainWindow():
         args.server_output_dir = self.serverOutputDir
 
         self.progressText.clear()
-        self.converter = Converter(args, self.logger)
-        self.converter.convertAll()
+        converter = Converter(args, self.logger)
+        converter.convertAll()
+        del converter
 
     def MainLoop(self):
         app = QApplication(sys.argv)
