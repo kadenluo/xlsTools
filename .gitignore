@@ -134,3 +134,4 @@ output
 build
 *.swo
 .DS_Store
+*.md5

@@ -1,9 +1,8 @@
 {
-    "inputDir": "./xls",
-    "clientOutputType": "lua",
-    "clientOutputDir": "./output/client",
-    "serverOutputType": "lua",
-    "serverOutputDir": "./output/server",
-    "isForce": false,
-    "excludeFiles":[".svn", ".git"]
+    "input_dir": "./xls",
+    "client_type": "json",
+    "client_output_dir": "./output/client",
+    "server_type": "json",
+    "server_output_dir": "./output/server",
+    "exclude_files":[".svn", ".git"]
 }

@@ -4,159 +4,89 @@
 import sys
 import os
 import json
+import xlrd
+import os
 import argparse
+import traceback
+import subprocess
 from datetime import datetime
 from PyQt5.QtCore import *
 from PyQt5.QtGui import *
 from PyQt5.QtWidgets import *
 from PyQt5.QtCore import Qt
-from xlsTools import Converter, Logger
+from xlsTools import convertFiles, getAllFiles, getModifiedFiles
+from logger import Logger
+from tkinter import messagebox
 
-class UILogger(Logger):
-    def __init__(self, box):
-        super().__init__()
-        self.box = box
+class FileState:
+    Normal = 0  # 000000 正常在svn管理下的最新的文件
+    RemoteLocked = 1  # 000001 云端锁定态
+    LocalLocked = 2  # 000010 本地锁定态
+    Locked = 3  # 000011 已锁定 state and Locked == True
+    LocalMod = 4  # 000100 本地有修改需提交
+    RemoteMod = 8  # 001000 远程有修改需要更新
+    Conflicked = 12  # 001100 冲突 state and Conflicked == Conflicked
+    UnVersioned = 16  # 010000 未提交到库
+    Error = 32  # 100000 错误状态
 
-    def info(self, pattern, *args):
-        self.box.append("{} [INFO] {}".format(datetime.now().strftime('%Y-%m-%d %H:%M:%S'), pattern.format(*args)))
-
-    def error(self, pattern, *args):
-        self.box.append("{} [ERROR] {}".format(datetime.now().strftime('%Y-%m-%d %H:%M:%S'), pattern.format(*args)))
-
-    def critical(self, pattern, *args):
-        QMessageBox.critical(self.box, "错误", pattern.format(*args), QMessageBox.Yes)
-class mainWindow():
+class mainWindow(QWidget):
+    _config = argparse.ArgumentParser()
     def __init__(self, cfgfile):
-        self.isForce = False
-        self.inputDir = "./xls"
-        self.clientOutputDir = "./output/client"
-        self.serverOutputDir = "./output/server"
-        self.clientOutputType = "lua"
-        self.serverOutputType = "lua"
-        self.excludeFiles = []
+        super(mainWindow, self).__init__()
+        default_config = {
+            "input_dir":  "./xls",
+            "client_type": "lua",
+            "client_output_dir": "./output/client",
+            "server_output_dir": "./output/server",
+            "server_type": "lua",
+            "exclude_files": [".svn", ".git"],
+        }
         if os.path.exists(cfgfile):
             with open(cfgfile, 'r') as f:
-                cfg = json.load(f)
-                self.inputDir = "inputDir" in cfg and cfg["inputDir"] or self.inputDir
-                self.clientOutputDir = "clientOutputDir" in cfg and cfg["clientOutputDir"] or self.clientOutputDir
-                self.serverOutputDir = "serverOutputDir" in cfg and cfg["serverOutputDir"] or self.serverOutputDir
-                self.clientOutputType = "clientOutputType" in cfg and cfg["clientOutputType"] or self.clientOutputType
-                self.serverOutputType = "serverOutputType" in cfg and cfg["serverOutputType"] or self.serverOutputType
-                self.isForce = "isForce" in cfg and cfg["isForce"] or self.isForce
-                self.excludeFiles = "excludeFiles" in cfg and cfg["excludeFiles"] or self.excludeFiles
+                default_config.update(json.load(f))
+        self._config = argparse.Namespace(**default_config)
 
-    def __str__(self):
-        return json.dumps(self.__dict__)
+        self.resize(720, 960)
+        self.setWindowTitle("转表工具")
+        self.setWindowIcon(QIcon("app.ico"))
 
-    def onInputDialogClicked(self):
-        self.inputDir = QFileDialog.getExistingDirectory(None, "选取文件", "./")
-        self.inputDirLine.setText(self.inputDir)
+        # init logger
+        loggerBox = QTextEdit()
+        loggerBox.setReadOnly(True)
+        self.logger = Logger(loggerBox)
 
-    def onClientOutputDialogClicked(self):
-        self.clientOutputDir = QFileDialog.getExistingDirectory(None, "选取文件", "./")
-        self.clientOutputDirLine.setText(self.clientOutputDir)
+        # init ui
+        mainLayout = QVBoxLayout()
+        self.setLayout(mainLayout)
 
-    def onServerOutputDialogClicked(self):
-        self.serverOutputDir = QFileDialog.getExistingDirectory(None, "选取文件", "./")
-        self.serverOutputDirLine.setText(self.serverOutputDir)
-
-    def onClientOutputTypeClicked(self, box):
-        self.clientAllTypeBox.setChecked(False)
-        self.clientJsonTypeBox.setChecked(False)
-        self.clientLuaTypeBox.setChecked(False)
-        box.setChecked(True)
-        self.clientOutputType = box.text()
-
-    def onServerOutputTypeClicked(self, box):
-        self.serverAllTypeBox.setChecked(False)
-        self.serverJsonTypeBox.setChecked(False)
-        self.serverLuaTypeBox.setChecked(False)
-        box.setChecked(True)
-        self.serverOutputType = box.text()
-
-    def onForceClicked(self, box):
-        self.forceFalseBox.setChecked(False)
-        self.forceTrueBox.setChecked(False)
-        box.setChecked(True)
-        self.isForce = box.text() == "是"
-
-    def do(self):
-        files = self.excludeFilesLine.text()
-        self.excludeFiles = files.split(",")
-
-        args = argparse.Namespace()
-        args.input_dir = self.inputDir
-        args.exclude_files = self.excludeFiles
-        args.force = self.isForce
-
-        args.client_type = self.clientOutputType
-        args.client_output_dir = self.clientOutputDir
-
-        args.server_type = self.serverOutputType
-        args.server_output_dir = self.serverOutputDir
-
-        self.progressText.clear()
-        converter = Converter(args, self.logger)
-        converter.convertAll()
-        del converter
-
-    def MainLoop(self):
-        app = QApplication(sys.argv)
-
-        widget = QWidget()
-        widget.resize(960, 720)
-        widget.setWindowTitle("转表工具")
-
-        inputDirLayout = QHBoxLayout()
-        inputDirLabel = QLabel(widget)
-        inputDirLabel.setText("excel目录：")
-        inputDirLabel.setAlignment(Qt.AlignCenter)
-        self.inputDirLine = QLineEdit(widget)
-        self.inputDirLine.setText(self.inputDir)
-        inputDirButton = QPushButton("打开文件夹")
-        inputDirButton.clicked.connect(self.onInputDialogClicked)
-        inputDirLayout.addWidget(inputDirLabel, stretch=1)
-        inputDirLayout.addWidget(self.inputDirLine, stretch=8)
-        inputDirLayout.addWidget(inputDirButton, stretch=1)
-
-        excludeFilesLayout = QHBoxLayout()
-        excludeFilesLabel = QLabel(widget)
-        excludeFilesLabel.setText("排除文件：")
-        excludeFilesLabel.setAlignment(Qt.AlignCenter)
-        self.excludeFilesLine = QLineEdit(widget)
-        self.excludeFilesLine.setText(",".join(self.excludeFiles))
-        excludeFilesLayout.addWidget(excludeFilesLabel, stretch=1)
-        excludeFilesLayout.addWidget(self.excludeFilesLine, stretch=9)
-        #excludeFilesLayout.addStretch(1)
+        # 设置
+        label = QLabel("设置") 
+        mainLayout.addWidget(label)
 
         #======================client==================
         clientOutputGroupBox = QGroupBox("client")
         clientOutputGroupBox.setFlat(False)
-        self.clientAllTypeBox = QCheckBox("all")
-        self.clientAllTypeBox.setChecked(self.clientOutputType == "all")
-        self.clientAllTypeBox.clicked.connect(lambda:self.onClientOutputTypeClicked(self.clientAllTypeBox))
         self.clientJsonTypeBox = QCheckBox("json")
-        self.clientJsonTypeBox.setChecked(self.clientOutputType == "json")
+        self.clientJsonTypeBox.setChecked(self._config.client_type == "json")
         self.clientJsonTypeBox.clicked.connect(lambda:self.onClientOutputTypeClicked(self.clientJsonTypeBox))
         self.clientLuaTypeBox = QCheckBox("lua")
-        self.clientLuaTypeBox.setChecked(self.clientOutputType == "lua")
+        self.clientLuaTypeBox.setChecked(self._config.client_type == "lua")
         self.clientLuaTypeBox.clicked.connect(lambda:self.onClientOutputTypeClicked(self.clientLuaTypeBox))
-        clientTypeLabel = QLabel(widget)
+        clientTypeLabel = QLabel(self)
         clientTypeLabel.setText("导出类型：")
         clientTypeLabel.setAlignment(Qt.AlignCenter)
         clientOutputTypeLayout = QHBoxLayout()
         clientOutputTypeLayout.addWidget(clientTypeLabel, stretch=1)
-        clientOutputTypeLayout.addWidget(self.clientAllTypeBox, stretch=1)
         clientOutputTypeLayout.addWidget(self.clientJsonTypeBox, stretch=1)
         clientOutputTypeLayout.addWidget(self.clientLuaTypeBox, stretch=1)
         clientOutputTypeLayout.addStretch(6)
 
         clientOutputDirLayout = QHBoxLayout()
-        clientOutputDirLabel = QLabel(widget)
+        clientOutputDirLabel = QLabel(self)
         clientOutputDirLabel.setText("输出目录：")
         clientOutputDirLabel.setAlignment(Qt.AlignCenter)
-        self.clientOutputDirLine = QLineEdit(widget)
-        self.clientOutputDirLine.setText(self.clientOutputDir)
+        self.clientOutputDirLine = QLineEdit(self)
+        self.clientOutputDirLine.setText(self._config.client_output_dir)
         clientOutputDirButton = QPushButton("打开文件夹")
         clientOutputDirButton.clicked.connect(self.onClientOutputDialogClicked)
         clientOutputDirLayout.addWidget(clientOutputDirLabel, stretch=1)
@@ -167,36 +97,34 @@ class mainWindow():
         clientLayout.addLayout(clientOutputTypeLayout)
         clientLayout.addLayout(clientOutputDirLayout)
         clientOutputGroupBox.setLayout(clientLayout)
-        #======================end client==================
 
+        mainLayout.addWidget(clientOutputGroupBox)
+        #======================end client==================
+        
         #======================server==================
         serverOutputGroupBox = QGroupBox("server")
         serverOutputGroupBox.setFlat(False)
-        self.serverAllTypeBox = QCheckBox("all")
-        self.serverAllTypeBox.setChecked(self.clientOutputType == "all")
-        self.serverAllTypeBox.clicked.connect(lambda:self.onServerOutputTypeClicked(self.serverAllTypeBox))
         self.serverJsonTypeBox = QCheckBox("json")
-        self.serverJsonTypeBox.setChecked(self.clientOutputType == "json")
+        self.serverJsonTypeBox.setChecked(self._config.server_type == "json")
         self.serverJsonTypeBox.clicked.connect(lambda:self.onServerOutputTypeClicked(self.serverJsonTypeBox))
         self.serverLuaTypeBox = QCheckBox("lua")
-        self.serverLuaTypeBox.setChecked(self.clientOutputType == "lua")
+        self.serverLuaTypeBox.setChecked(self._config.server_type == "lua")
         self.serverLuaTypeBox.clicked.connect(lambda:self.onServerOutputTypeClicked(self.serverLuaTypeBox))
-        serverTypeLabel = QLabel(widget)
+        serverTypeLabel = QLabel(self)
         serverTypeLabel.setText("导出类型：")
         serverTypeLabel.setAlignment(Qt.AlignCenter)
         serverOutputTypeLayout = QHBoxLayout()
         serverOutputTypeLayout.addWidget(serverTypeLabel, stretch=1)
-        serverOutputTypeLayout.addWidget(self.serverAllTypeBox, stretch=1)
         serverOutputTypeLayout.addWidget(self.serverJsonTypeBox, stretch=1)
         serverOutputTypeLayout.addWidget(self.serverLuaTypeBox, stretch=1)
         serverOutputTypeLayout.addStretch(6)
 
         serverOutputDirLayout = QHBoxLayout()
-        serverOutputDirLabel = QLabel(widget)
+        serverOutputDirLabel = QLabel(self)
         serverOutputDirLabel.setText("输出目录：")
         serverOutputDirLabel.setAlignment(Qt.AlignCenter)
-        self.serverOutputDirLine = QLineEdit(widget)
-        self.serverOutputDirLine.setText(self.serverOutputDir)
+        self.serverOutputDirLine = QLineEdit(self)
+        self.serverOutputDirLine.setText(self._config.server_output_dir)
         serverOutputDirButton = QPushButton("打开文件夹")
         serverOutputDirButton.clicked.connect(self.onServerOutputDialogClicked)
         serverOutputDirLayout.addWidget(serverOutputDirLabel, stretch=1)
@@ -207,47 +135,294 @@ class mainWindow():
         serverLayout.addLayout(serverOutputTypeLayout)
         serverLayout.addLayout(serverOutputDirLayout)
         serverOutputGroupBox.setLayout(serverLayout)
+
+        mainLayout.addWidget(serverOutputGroupBox)
         #======================end server==================
 
-        forceGroupBox = QGroupBox("是否强制导出所有表格")
-        forceGroupBox.setFlat(False)
-        self.forceTrueBox = QCheckBox("是")
-        self.forceTrueBox.setChecked(self.isForce)
-        self.forceTrueBox.clicked.connect(lambda:self.onForceClicked(self.forceTrueBox))
-        self.forceFalseBox = QCheckBox("否")
-        self.forceFalseBox.setChecked(not self.isForce)
-        self.forceFalseBox.clicked.connect(lambda:self.onForceClicked(self.forceFalseBox))
-        forceLayout = QHBoxLayout()
-        forceLayout.addWidget(self.forceTrueBox)
-        forceLayout.addWidget(self.forceFalseBox)
-        forceGroupBox.setLayout(forceLayout)
+        # ui top
+        topLayout = QVBoxLayout()
 
-        self.progressText = QTextEdit()
-        self.progressText.setReadOnly(True)
-        self.logger = UILogger(self.progressText)
+        self.recentListWidget = QListWidget()
+        self.recentListWidget.itemDoubleClicked.connect(self.onListItemClicked)
+        scrollBar = QScrollBar()
+        self.recentListWidget.addScrollBarWidget(scrollBar, Qt.AlignLeft)
+        topLayout.addWidget(self.recentListWidget)
+        mainLayout.addLayout(topLayout, stretch = 30)
 
-        doLayout = QHBoxLayout()
-        doButton = QPushButton("开始")
-        doButton.clicked.connect(self.do)
-        doButton.setStyleSheet("background-color:rgb(14, 137, 205);color:white;border-radius:8px;font-family:Microsoft Yahei;font-size:20pt");
-        doLayout.addStretch(4)
-        doLayout.addWidget(doButton, stretch=2)
-        doLayout.addStretch(4)
+        # ui center
+        centerLayout = QVBoxLayout()
 
-        mainLayout = QVBoxLayout()
-        mainLayout.addLayout(inputDirLayout)
-        mainLayout.addLayout(excludeFilesLayout)
-        mainLayout.addWidget(clientOutputGroupBox)
-        mainLayout.addWidget(serverOutputGroupBox)
-        mainLayout.addWidget(forceGroupBox)
-        mainLayout.addWidget(self.progressText, stretch=50)
-        mainLayout.addLayout(doLayout, stretch=1)
-        mainLayout.addStretch(1)
-        widget.setLayout(mainLayout)
+        label = QLabel("通用功能") 
+        centerLayout.addWidget(label)
 
-        widget.show()
-        sys.exit(app.exec_())
+        buttonLayout = QHBoxLayout()
+
+        refreshAllButton = QPushButton("刷新") 
+        buttonLayout.addWidget(refreshAllButton)
+        refreshAllButton.setFixedWidth(60)
+        refreshAllButton.clicked.connect(self.refreshFiles)
+
+        convertAllButton = QPushButton("转全部") 
+        buttonLayout.addWidget(convertAllButton)
+        convertAllButton.setFixedWidth(60)
+        convertAllButton.clicked.connect(self.onConvertAllFileClicked)
+
+        commitAllButton = QPushButton("提交全部") 
+        buttonLayout.addWidget(commitAllButton)
+        commitAllButton.setFixedWidth(60)
+        commitAllButton.clicked.connect(self.onCommitAllFileClicked)
+
+        clearLogButton = QPushButton("清Log") 
+        buttonLayout.addWidget(clearLogButton)
+        clearLogButton.setFixedWidth(50)
+        clearLogButton.clicked.connect(self.onCleanLogClicked)
+        centerLayout.addLayout(buttonLayout)
+
+        mainLayout.addLayout(centerLayout, stretch=10)
+
+        # ui bottom
+        bottomLayout = QVBoxLayout()
+        self.allListWidget = QListWidget()
+        scrollBarAll = QScrollBar()
+        self.allListWidget.addScrollBarWidget(scrollBarAll, Qt.AlignLeft)
+        bottomLayout.addWidget(self.allListWidget)
+        mainLayout.addLayout(bottomLayout, stretch=40)
+
+        ##messgebox
+        mainLayout.addWidget(loggerBox, stretch=30)
+
+        self.refreshFiles()
+
+
+    def __str__(self):
+        return json.dumps(self.__dict__)
+
+    def getCorrelativeFileNames(self, filepath):
+        names = []
+        wb = xlrd.open_workbook(filepath)
+        for sheet in wb.sheets():
+            name = sheet.name.lower()
+            if name.startswith("~"):
+                return False
+            names.append(name)
+
+        return names
+
+    def getCommitFilePathsByFile(self, filepath):
+        paths = []
+        paths.append(filepath)
+        exportNames = self.getCorrelativeFileNames(filepath)
+        for export in exportNames:
+            paths.append("{}/{}.{}".format(self._config.client_output_dir, export, self._config.client_type))
+            paths.append("{}/{}.{}".format(self._config.server_output_dir, export, self._config.server_type))
+        return paths
+    
+
+    def onListItemClicked(self, item):
+        fileName = item.data(1)
+        self.logger.info("open xls file:" + str(fileName)) 
+        if(fileName == None):
+            return
+
+        cmd = "start excel \"{}\"".format(item.data(1))
+        # cmd = "start excel \"%s\\%s\"" %(self._config.input_dir, item.data(1))
+        p = subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            shell=True
+        )
+        
+    def resetListWidget(self, listWidget, files):
+        listWidget.clear()
+        for fileName in files:
+            item = QListWidgetItem()
+            item.setSizeHint(QSize(400, 50))
+            item.setData(1, fileName)
+            widget = self.getListItemWidget(fileName)
+            listWidget.addItem(item)
+            listWidget.setItemWidget(item, widget)
+        listWidget.itemDoubleClicked.connect(self.onListItemClicked)
+    
+    def onOpenFileDirClicked(self, fileName):
+        self.logger.info("open file:" + fileName)
+        path = os.path.abspath(self._config.input_dir)
+        cmd = "explorer.exe \"%s\"" %(path)
+        p = subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            encoding="utf-8",
+            shell=True
+        )
+    
+    def onCommitFileClicked(self, fileName):
+        self.logger.info("commit file:" + fileName)
+        paths = self.getCommitFilePathsByFile(fileName)
+        abspaths = []
+        for path in paths:
+             abspaths.append(os.path.abspath(path))
+        pathsStr = "*".join(abspaths)
+
+        cmd = "TortoiseGitProc.exe /command:commit /path:\"%s\"" % pathsStr
+        p = subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            encoding="utf-8",
+            shell=True
+        )
+    
+    def onRevertFileClicked(self, fileName):
+        self.logger.info("revert file:" + fileName)
+        paths = self.getCommitFilePathsByFile(fileName)
+        abspaths = []
+        for path in paths:
+             abspaths.append(os.path.abspath(path))
+        pathsStr = "*".join(abspaths)
+
+        cmd = "TortoiseGitProc.exe /command:revert /path:\"%s\"" % pathsStr
+        p = subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            encoding="utf-8",
+            shell=True
+        )
+        self.refreshFiles()
+
+    def getListItemWidget(self, fileName):
+        widget = QWidget()
+        layout_main = QHBoxLayout()
+
+        label = QLabel(fileName) 
+        ##设置颜色，根据是否修改，区分红色和绿色
+        state = None
+        # if fileName in self.fileStatusDict:
+        #     state = self.fileStatusDict[fileName]["state"]
+
+        if state == FileState.LocalMod or state == FileState.UnVersioned:
+            label.setStyleSheet("background-color: red")
+        elif state == FileState.Conflicked:
+            label.setStyleSheet("background-color: yellow")
+        elif state == FileState.RemoteLocked or state == FileState.LocalLocked:
+            label.setStyleSheet("background-color: gray")
+        else:
+            label.setStyleSheet("background-color: lightgreen") 
+        
+        layout_main.addWidget(label)
+
+        convertButton = QPushButton("转")
+        convertButton.clicked.connect(lambda: self.onConvertFileClicked(fileName))
+        layout_main.addWidget(convertButton)
+        convertButton.setFixedWidth(40)
+
+        openDirButton = QPushButton("夹")
+        openDirButton.clicked.connect(lambda: self.onOpenFileDirClicked(fileName))
+        layout_main.addWidget(openDirButton)
+        openDirButton.setFixedWidth(40)
+
+        commitButton = QPushButton("交")
+        commitButton.clicked.connect(lambda: self.onCommitFileClicked(fileName))
+        layout_main.addWidget(commitButton)
+        commitButton.setFixedWidth(40)
+
+        revertButton = QPushButton("退")
+        revertButton.clicked.connect(lambda: self.onRevertFileClicked(fileName))
+        layout_main.addWidget(revertButton)
+        revertButton.setFixedWidth(40)
+
+        # if state == FileState.RemoteLocked or state == FileState.LocalLocked:
+        #     unlockButton = QPushButton("解锁")
+        #     unlockButton.clicked.connect(lambda: self.onUnlockFileClicked(fileName))
+        #     layout_main.addWidget(unlockButton)
+        #     unlockButton.setFixedWidth(40)
+        # else:
+        #     lockButton = QPushButton("锁")
+        #     lockButton.clicked.connect(lambda: self.onLockFileClicked(fileName))
+        #     layout_main.addWidget(lockButton)
+        #     lockButton.setFixedWidth(40)
+        
+        widget.setLayout(layout_main)
+        return widget
+    
+    def refreshFiles(self):
+        self.resetListWidget(self.allListWidget, getAllFiles(self._config.input_dir))
+        self.resetListWidget(self.recentListWidget, getModifiedFiles(self._config.input_dir))
+
+    def convertFiles(self, files):
+        cfg = self._config
+        return convertFiles(files, cfg.client_type, cfg.client_output_dir, cfg.server_type, cfg.server_output_dir)
+
+    def onConvertFileClicked(self, fileName):
+        self.logger.info("convert file:" + fileName)
+        ret = convertFiles([fileName])
+        self.refreshFiles()
+        # if ret:
+        #     QMessageBox.information(self, "Message", "转出表成功")
+        # else:
+        #     QMessageBox.critical(self, "Error", "转出表失败")
+
+    def onConvertAllFileClicked(self):
+        self.logger.info("covert all file")
+        ret = self.convertFiles(getAllFiles(self._config.input_dir))
+        self.refreshFiles()
+        # if ret:
+        #     QMessageBox.information(self, "Message", "转出所有表成功")
+        # else:
+        #     QMessageBox.critical(self, "Error", "转出所有表失败")
+    
+    def onCommitAllFileClicked(self):
+        self.logger.info("commit all file")
+        paths = [
+            self._config.input_dir,
+            self._config.client_output_dir,
+            self._config.server_output_dir,
+        ]
+        abspaths = []
+        for path in paths:
+             abspaths.append(os.path.abspath(path))
+        pathsStr = "*".join(abspaths)
+
+        cmd = "TortoiseGitProc.exe /command:commit /path:\"%s\"" % pathsStr
+        p = subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            encoding="utf-8",
+            shell=True
+        )
+
+    def onCleanLogClicked(self):
+        self.logger.clear()
+
+    def onClientOutputTypeClicked(self, box):
+        self.clientJsonTypeBox.setChecked(False)
+        self.clientLuaTypeBox.setChecked(False)
+        box.setChecked(True)
+        self._config.client_type = box.text()
+    
+    def onServerOutputTypeClicked(self, box):
+        self.serverJsonTypeBox.setChecked(False)
+        self.serverLuaTypeBox.setChecked(False)
+        box.setChecked(True)
+        self._config.server_type = box.text()
+    
+    def onClientOutputDialogClicked(self):
+        self._config.client_output_dir = QFileDialog.getExistingDirectory(None, "选取文件", "./")
+        self.clientOutputDirLine.setText(self._config.client_output_dir)
+    
+    def onServerOutputDialogClicked(self):
+        self._config.server_output_dir = QFileDialog.getExistingDirectory(None, "选取文件", "./")
+        self.serverOutputDirLine.setText(self._config.server_output_dir)
 
 if __name__ == "__main__":
-    window = mainWindow("./config.json")
-    window.MainLoop()
+    QCoreApplication.setAttribute(Qt.AA_EnableHighDpiScaling)
+    app = QApplication(sys.argv)
+    try:
+        window = mainWindow("./config.json")
+        window.show()
+    except Exception as ex:
+        messagebox.showerror(title="错误", message=traceback.format_exc())
+    sys.exit(app.exec_())
+    
