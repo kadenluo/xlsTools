@@ -23,32 +23,66 @@ def myassert(expr, errmsg="Unknown"):
     if not expr:
         raise Exception(errmsg)
 
-def _fixLevelType(item):
-    meta = item["_meta"]
-    del item["_meta"]
-
-    for (key, value) in item.items():
-        if isinstance(value, dict):
-            item[key] = _fixLevelType(value)
-
-    if meta["isdict"]:
-        pass
-    else:
-        tmp = []
-        bAllNumber = True
-        for k in item.keys():
-            if not str.isdigit(k):
-                bAllNumber = False
-                break
-        if bAllNumber:
-            for k in sorted(item.keys(), key=lambda key: int(key)):
-                tmp.append(item[k])
+def flatten_to_nested_dict(flat_dict):
+    nested_dict = {}
+    for key, value in flat_dict.items():
+        parts = key.split("#")
+        partsNum = len(parts)
+        current_dict = nested_dict
+        for idx in range(0, partsNum-1):
+            part = parts[idx]
+            if parts[idx+1].isdigit():
+                if part not in current_dict:
+                    current_dict[part] = []
+                current_dict = current_dict[part]
+            else:
+                if part not in current_dict:
+                    if isinstance(current_dict, list):
+                        index = int(part) 
+                        for i in range(len(current_dict), index):
+                            current_dict.append({})
+                        current_dict = current_dict[index-1]
+                    else:
+                        current_dict[part] = {}
+                        current_dict = current_dict[part]
+        if parts[-1].isdigit():
+            index = int(parts[-1])
+            for i in range(len(current_dict), index):
+                current_dict.append(0)
+            current_dict[index-1] = value
         else:
-            for k in sorted(item.keys()):
-                tmp.append(item[k])
+            if isinstance(current_dict, dict):
+                current_dict[parts[-1]] = value
+            else:
+                current_dict[parts[-1]] = value
+    return nested_dict
 
-        item = tmp
-    return item
+# def _fixLevelType(item):
+#     meta = item["_meta"]
+#     del item["_meta"]
+
+#     for (key, value) in item.items():
+#         if isinstance(value, dict):
+#             item[key] = _fixLevelType(value)
+
+#     if meta["isdict"]:
+#         pass
+#     else:
+#         tmp = []
+#         bAllNumber = True
+#         for k in item.keys():
+#             if not str.isdigit(k):
+#                 bAllNumber = False
+#                 break
+#         if bAllNumber:
+#             for k in sorted(item.keys(), key=lambda key: int(key)):
+#                 tmp.append(item[k])
+#         else:
+#             for k in sorted(item.keys()):
+#                 tmp.append(item[k])
+
+#         item = tmp
+#     return item
 
 
 def _convertHead(sheet):
@@ -119,8 +153,6 @@ def _convertSheet(sheet):
     for row in range(4, nrows):
         clientFields = {}
         serverFields = {}
-        clientItem = {"_meta":{"isdict":True}}
-        serverItem = {"_meta":{"isdict":True}}
         for col in range(ncols):
             #if sheet.cell(row, col).ctype == xlrd.XL_CELL_EMPTY:
             #    continue
@@ -129,7 +161,7 @@ def _convertSheet(sheet):
                 value = DataParser().getCellValue(sheet.cell(row, col), meta["type"]) 
                 key = meta["name"]
                 if len(meta["levels"]) == 1:
-                    clientItem[key] = value
+                    clientFields[key] = value
                 else:
                     clientFields[key] = value
 
@@ -138,58 +170,23 @@ def _convertSheet(sheet):
                 value = DataParser().getCellValue(sheet.cell(row, col), meta["type"]) 
                 key = meta["name"]
                 if len(meta["levels"]) == 1:
-                    serverItem[key] = value
+                    serverFields[key] = value
                 else:
                     serverFields[key] = value
 
         # client
         if len(clientDict["col2fields"]) > 0 :
-            _genRowData(clientResult, clientDict, clientFields, clientItem, False)
+            _genRowData(clientResult, clientDict, clientFields, False)
 
         # server
         if len(serverDict["col2fields"]) > 0:
-            _genRowData(serverResult, serverDict, serverFields, serverItem, True)
+            _genRowData(serverResult, serverDict, serverFields, True)
 
     return clientResult, serverResult
 
-def _convertRow(result, fields):
-    if len(fields) == 0 :
-        return
 
-    keys = sorted(fields.keys())
-    total = len(keys)
-
-    idx = 0
-    childfields = {}
-    while idx < total:
-        key = keys[idx]
-        value = fields[key]
-
-        path = key.split('#')
-        childitem = {"_meta":{"isdict":not path[-1].isdigit()}}
-        prefix = "#".join(path[:-1])
-        while idx < total:
-            k = keys[idx]
-            if k.startswith(prefix):
-                p = k.split('#')
-                childitem[p[-1]] = fields[k]
-            else:
-                idx = idx - 1
-                break
-            idx = idx + 1
-
-        if len(path) > 2:
-            childfields[prefix] = childitem
-        else:
-            result[prefix] = childitem 
-        idx = idx + 1
-
-    _convertRow(result, childfields)
-
-
-def _genRowData(result, sheetDict, fields, items, flag):
-    _convertRow(items, fields)
-    items = _fixLevelType(items)
+def _genRowData(result, sheetDict, fields, flag):
+    items = flatten_to_nested_dict(fields)
     if isinstance(fields, list):
         result.append(items)
     else:
@@ -264,13 +261,16 @@ def convertFiles(files, client_type="json", client_output_dir="./output/client",
         if not server_type is None:
             myassert((not server_output_dir is None))
 
+        failedCnt = 0
+        totalCnt = len(files)
         for filepath in files:
             ret = convertFile(filepath, client_type, client_output_dir, server_type, server_output_dir)
             if not ret:
+                failedCnt = failedCnt + 1
                 Logger().error("============FAILED============={}", filepath)
                 return False
         
-        Logger().info("============SUCCESS=============")
+        Logger().info("============Finished(Total:{}, Failed:{})=============", totalCnt, failedCnt)
         return True
     except Exception as ex:
         Logger().error("convertFiles has error. traceback:{}", traceback.format_exc())

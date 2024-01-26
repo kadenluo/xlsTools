@@ -31,7 +31,9 @@ def toLua(data, level=1):
         lines.append("{\n%s\n%s}"%(", \n".join(items), output_indent*(level-1)))
     elif isinstance(data, dict):
         items = []
-        for (key, value) in data.items():
+        keys = sorted(data.keys())
+        for key in keys:
+            value = data[key]
             if isinstance(key, int):
                 key = "[%d]"%(key)
             elif isinstance(key, str):
@@ -60,7 +62,7 @@ def saveData(output_dir, filename, ftype, data):
         filepath = os.path.join(output_dir, "{}.lua".format(filename))
 
     if ftype == "all" or ftype == "json":
-        code = json.dumps(data, indent=4, ensure_ascii=False)
+        code = json.dumps(data, indent=4, ensure_ascii=False, sort_keys=True)
         filepath = os.path.join(output_dir, "{}.json".format(filename))
 
     out_dir = os.path.dirname(filepath)
